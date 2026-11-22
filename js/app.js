@@ -899,6 +899,7 @@ function renderModal() {
   const m = forced || ui.modal;
   const closable = !forced;
   const html = !m ? '' : `<div class="backdrop" ${closable ? 'data-act="close-modal"' : ''}>
+    ${m.confetti ? confettiHTML(m.confetti) : ''}
     <div class="modal ${m.cls || ''}" role="dialog" aria-modal="true" aria-label="${esc(m.label || (m.title || '').replace(/<[^>]+>/g, ''))}">
       ${m.title || closable ? `<header class="modal-head">
         <h2>${m.title || ''}</h2>
@@ -917,45 +918,43 @@ function renderModal() {
   }
 }
 
+/** Falling suits. Positions are derived from the seed so re-renders don't restart the animation. */
+function confettiHTML(seed) {
+  let x = seed * 9301 + 49297;
+  const rnd = () => ((x = (x * 9301 + 49297) % 233280) / 233280);
+  const suits = ['♥', '♠', '♦', '♣'];
+  return `<div class="confetti" aria-hidden="true">${Array.from({ length: 28 }, (_, i) => {
+    const s = suits[i % 4];
+    return `<i class="${s === '♥' || s === '♦' ? 'r' : ''}" style="left:${(rnd() * 100).toFixed(1)}%;animation-delay:${(rnd() * 1.2).toFixed(2)}s;animation-duration:${(2.4 + rnd() * 1.8).toFixed(2)}s;font-size:${(14 + rnd() * 18).toFixed(0)}px;--drift:${((rnd() - 0.5) * 120).toFixed(0)}px">${s}</i>`;
+  }).join('')}</div>`;
+}
+
+/** Players ranked by total, with tied players sharing a place. */
+function ranked(players, totalOf = (p) => p.total) {
+  const list = players.slice().sort((a, b) => totalOf(a) - totalOf(b));
+  return list.map((p) => ({ p, place: 1 + list.filter((q) => totalOf(q) < totalOf(p)).length }));
+}
+const outCount = (g, pid) => g.scores.filter((s) => s.out === pid).length;
+const ordinal = (n) => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+
 function forcedModal() {
   const v = app.view;
   const g = v?.game;
   if (!g) return null;
   const isHost = app.role === 'host';
+  const hostName = esc(playerName(v, v.hostId));
   if (g.phase === 'dealerDraw') {
     const dealer = g.players[g.dealer];
     return {
       title: 'Who deals first?',
-      body: `${g.dealDraw ? `<p class="muted small">Everyone pulled a card — lowest deals (Joker high, Ace high, ties ♥ ♠ ♦ ♣).</p>
+      body: `${g.dealDraw ? `<p class="muted small center">Everyone pulled a card — lowest deals (Joker high, Ace high, ties ♥ ♠ ♦ ♣).</p>
         <div class="draws">${g.dealDraw.map((d) => `<div class="draw ${d.pid === dealer.id ? 'win' : ''}">${cardHTML(d.card)}<div>${esc(playerName(v, d.pid))}</div></div>`).join('')}</div>` : ''}
         <p class="center"><b>${esc(dealer.name)}</b> deals first. ${esc(g.players[(g.dealer + 1) % g.players.length].name)} plays first.</p>`,
-      buttons: isHost ? `<button class="btn primary" data-act="next-round">Deal round 1</button>` : `<span class="muted">Waiting for the host to deal…</span>`,
+      buttons: isHost ? `<button class="btn primary" data-act="next-round">Deal round 1</button>` : `<span class="muted">Waiting for ${hostName} to deal…</span>`,
     };
   }
-  if (g.phase === 'roundEnd' || g.phase === 'gameEnd') {
-    const last = g.scores[g.scores.length - 1];
-    const final = g.phase === 'gameEnd';
-    if (final) {
-      const ranked = g.players.slice().sort((a, b) => a.total - b.total);
-      return {
-        title: `🏆 ${esc(ranked[0].name)} wins!`,
-        cls: 'wide',
-        body: `<ol class="standings">${ranked.map((p, i) => `<li class="${i === 0 ? 'win' : ''}"><span>${esc(p.name)}</span><b>${p.total}</b></li>`).join('')}</ol>${scoreTable(g)}`,
-        buttons: isHost ? `<button class="btn primary" data-act="end-game">Back to lobby</button>` : `<button class="btn ghost" data-act="leave">Leave</button>`,
-      };
-    }
-    return {
-      title: `${esc(playerName(v, last.out))} went out!`,
-      cls: 'wide',
-      body: `<p class="muted center">Round ${last.round + 1} · ${esc(ROUNDS[last.round].label)}</p>
-        <div class="results">${g.players.map((p) => `
-          <div class="result">
-            <div class="res-head"><b>${esc(p.name)}</b><span>+${last.pts[p.id]} <span class="muted">→ ${p.total}</span></span></div>
-            <div class="meld">${(g.revealed?.[p.id] || []).map((c) => cardHTML(c, { cls: 'mini' })).join('') || '<span class="muted small">no cards 🎉</span>'}</div>
-          </div>`).join('')}</div>`,
-      buttons: isHost ? `<button class="btn primary" data-act="next-round">${last.round + 1 >= ROUNDS.length ? 'Final results' : `Deal round ${last.round + 2}`}</button>` : `<span class="muted">Waiting for the host…</span>`,
-    };
-  }
+  if (g.phase === 'gameEnd') return gameEndModal(v, isHost, hostName);
+  if (g.phase === 'roundEnd') return roundEndModal(v, isHost, hostName);
   if (g.phase === 'turn' && g.shanghaiPick && g.shanghaiPick.discarder === v.me) {
     const sp = g.shanghaiPick;
     return {
@@ -967,13 +966,111 @@ function forcedModal() {
   return null;
 }
 
+function roundEndModal(v, isHost, hostName) {
+  const g = v.game;
+  const last = g.scores[g.scores.length - 1];
+  const outName = esc(playerName(v, last.out));
+  const before = (p) => p.total - (last.pts[p.id] || 0);
+  const prevPlace = new Map(ranked(g.players, before).map((r) => [r.p.id, r.place]));
+  const rows = ranked(g.players).map(({ p, place }) => {
+    const moved = g.scores.length > 1 ? prevPlace.get(p.id) - place : 0;
+    const cards = g.revealed?.[p.id] || [];
+    return `<li class="st ${p.id === last.out ? 'out' : ''} ${p.id === v.me ? 'me' : ''} ${place === 1 ? 'first' : ''}">
+      <span class="st-place">${place}</span>
+      <div class="st-main">
+        <div class="st-line"><b class="st-name">${esc(p.name)}</b>${p.id === last.out ? '<span class="tag gold">Went out</span>' : ''}${moved > 0 ? `<span class="move up" title="Up ${moved}">▲${moved}</span>` : moved < 0 ? `<span class="move down" title="Down ${-moved}">▼${-moved}</span>` : ''}</div>
+        <div class="st-cards">${cards.length ? cards.map((c) => cardHTML(c, { cls: 'mini' })).join('') : '<span class="muted small">No cards left</span>'}</div>
+      </div>
+      <div class="st-pts"><span class="st-round ${last.pts[p.id] ? '' : 'zero'}">+${last.pts[p.id]}</span><b class="st-total">${p.total}</b></div>
+    </li>`;
+  }).join('');
+  const nextR = ROUNDS[last.round + 1];
+  return {
+    label: `${playerName(v, last.out)} went out`,
+    cls: 'wide celebrate',
+    confetti: last.round + 1,
+    body: `<div class="hero">
+        <div class="hero-kicker">Round ${last.round + 1} of 7 · ${esc(ROUNDS[last.round].label)}</div>
+        <div class="hero-title"><span class="hero-name">${last.out === v.me ? 'You' : outName}</span> went out!</div>
+        ${last.out === v.me ? '<div class="hero-sub">Zero points for you this round.</div>' : ''}
+      </div>
+      <div class="st-cols muted small"><span>Standings</span><span>Round · Total</span></div>
+      <ol class="standings">${rows}</ol>
+      ${nextR ? `<p class="next-up">Up next · Round ${last.round + 2}: <b>${esc(nextR.label)}</b></p>` : '<p class="next-up">That was the last round!</p>'}`,
+    buttons: isHost
+      ? `<button class="btn primary big" data-act="next-round">${nextR ? `Deal round ${last.round + 2}` : 'See final results'}</button>`
+      : `<span class="muted">Waiting for ${hostName} to ${nextR ? 'deal the next round' : 'show the final results'}…</span>`,
+  };
+}
+
+function gameEndModal(v, isHost, hostName) {
+  const g = v.game;
+  const list = ranked(g.players);
+  const winners = list.filter((r) => r.place === 1).map((r) => r.p);
+  const title = winners.length > 1 ? `${winners.map((p) => esc(p.name)).join(' & ')} tie for the win!` : `${winners[0].id === v.me ? 'You win' : `${esc(winners[0].name)} wins`}!`;
+  const medal = ['🥇', '🥈', '🥉'];
+  // Podium order: 2nd, 1st, 3rd.
+  const podium = [list[1], list[0], list[2]].filter(Boolean);
+  const outs = (p) => { const n = outCount(g, p.id); return n ? `Went out ${n}×` : ''; };
+  return {
+    label: 'Final results',
+    cls: 'wide celebrate',
+    confetti: 99,
+    body: `<div class="hero">
+        <div class="hero-trophy">🏆</div>
+        <div class="hero-title">${title}</div>
+        <div class="hero-kicker">Final score ${winners[0].total} after ${g.scores.length} round${g.scores.length === 1 ? '' : 's'}</div>
+      </div>
+      <div class="podium">${podium.map(({ p, place }) => `
+        <div class="pod p${place} ${p.id === v.me ? 'me' : ''}">
+          <div class="pod-medal">${medal[place - 1] || ''}</div>
+          <div class="pod-name">${esc(p.name)}</div>
+          <div class="pod-score">${p.total}</div>
+          <div class="pod-block"><span>${ordinal(place)}</span></div>
+          <div class="pod-note small muted">${outs(p)}</div>
+        </div>`).join('')}</div>
+      ${list.length > 3 ? `<ol class="standings compact">${list.slice(3).map(({ p, place }) => `
+        <li class="st ${p.id === v.me ? 'me' : ''}"><span class="st-place">${place}</span><div class="st-main"><b class="st-name">${esc(p.name)}</b> <span class="muted small">${outs(p)}</span></div><div class="st-pts"><b class="st-total">${p.total}</b></div></li>`).join('')}</ol>` : ''}
+      <details class="fold"><summary>Round-by-round scores</summary>${scoreTable(g)}</details>`,
+    buttons: isHost ? `<button class="btn primary big" data-act="end-game">Back to lobby</button>` : `<span class="muted">${hostName} can start a new game from the lobby.</span> <button class="btn ghost" data-act="leave">Leave</button>`,
+  };
+}
+
 function scoreTable(g) {
-  if (!g.scores.length) return '<p class="muted center">No rounds finished yet.</p>';
+  const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : null;
+  const live = ['compose', 'turn'].includes(g.phase);
   return `<div class="scroll-x"><table class="scores">
-    <thead><tr><th>Round</th>${g.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
-    <tbody>${g.scores.map((s) => `<tr><td>${s.round + 1}</td>${g.players.map((p) => `<td class="${s.out === p.id ? 'out' : ''}">${s.pts[p.id]}</td>`).join('')}</tr>`).join('')}</tbody>
-    <tfoot><tr><th>Total</th>${g.players.map((p) => `<th>${p.total}</th>`).join('')}</tr></tfoot>
-  </table></div>`;
+    <thead><tr><th class="rcol">Round</th>${g.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
+    <tbody>${ROUNDS.map((r, i) => {
+      const s = g.scores.find((x) => x.round === i);
+      const now = live && i === g.round;
+      return `<tr class="${s ? '' : now ? 'now' : 'later'}">
+        <th class="rcol" title="${esc(r.label)}"><span class="rnum">${i + 1}</span><span class="rlabel">${esc(r.label)}</span></th>
+        ${g.players.map((p) => s
+          ? `<td class="${s.out === p.id ? 'out' : ''}">${s.out === p.id ? '★ ' : ''}${s.pts[p.id] ?? '–'}</td>`
+          : `<td class="muted">${now ? '…' : ''}</td>`).join('')}
+      </tr>`;
+    }).join('')}</tbody>
+    <tfoot><tr><th class="rcol">Total</th>${g.players.map((p) => `<th class="${p.total === low ? 'lead' : ''}">${p.total}</th>`).join('')}</tr></tfoot>
+  </table></div>
+  <p class="muted small center">★ went out · lowest total wins</p>`;
+}
+
+function scoresModal(g) {
+  const v = app.view;
+  const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : 0;
+  const rows = ranked(g.players).map(({ p, place }) => `
+    <li class="st ${p.id === v.me ? 'me' : ''} ${place === 1 && g.scores.length ? 'first' : ''}">
+      <span class="st-place">${g.scores.length ? place : '–'}</span>
+      <div class="st-main"><b class="st-name">${esc(p.name)}</b>${outCount(g, p.id) ? ` <span class="muted small">went out ${outCount(g, p.id)}×</span>` : ''}</div>
+      <div class="st-pts">${g.scores.length && p.total > low ? `<span class="st-round behind">+${p.total - low} behind</span>` : ''}<b class="st-total">${p.total}</b></div>
+    </li>`).join('');
+  return {
+    title: 'Scores',
+    cls: 'wide',
+    body: `${g.scores.length ? `<ol class="standings">${rows}</ol>` : '<p class="muted center">No rounds finished yet — lowest score after 7 rounds wins.</p>'}
+      ${scoreTable(g)}`,
+  };
 }
 
 const RULES_HTML = `
@@ -1217,7 +1314,7 @@ const handlers = {
     ui.modal = null;
     app.session?.endGame();
   },
-  scores() { ui.modal = { title: 'Scores', cls: 'wide', body: scoreTable(app.view.game) }; renderModal(); },
+  scores() { ui.modal = scoresModal(app.view.game); renderModal(); },
   log() {
     const g = app.view.game;
     ui.modal = { title: 'Game log', body: `<ul class="log">${g.log.slice().reverse().map((e) => `<li class="${e.kind}">${esc(e.text)}</li>`).join('')}</ul>` };
