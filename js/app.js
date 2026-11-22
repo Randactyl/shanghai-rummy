@@ -692,6 +692,9 @@ function gameHTML(v) {
   // Players who were removed keep their cards on the table (others can still play on them).
   const owners = [...g.players, ...g.departed.map((p) => ({ ...p, left: true }))].filter((p) => g.melds.some((m) => m.owner === p.id));
   const modeActive = targets.size > 0 || !!ui.mode;
+  // "Recent" = played during the last lap of turns, i.e. everything since your own previous turn.
+  const recentAfter = g.turnNo - g.players.length;
+  const isRecent = (c) => (g.played?.[c] ?? -Infinity) > recentAfter;
   const table = owners.length
     ? owners.map((p) => `
       <div class="owner">
@@ -701,7 +704,7 @@ function gameHTML(v) {
             const t = targets.get(m.id);
             const isSrc = ui.mode?.kind === 'jokerTarget' && ui.mode.meldId === m.id;
             return `<div class="meld ${t ? 'target' : modeActive ? 'dim' : ''} ${isSrc ? 'source' : ''}" ${t ? `data-act="meld" data-meld="${m.id}" role="button" tabindex="0"` : ''} title="${esc(describeMeld(m, mods))}">
-              ${m.cards.map((c) => cardHTML(c, { cls: 'mini' })).join('')}
+              ${m.cards.map((c) => cardHTML(c, { cls: `mini ${isRecent(c) ? 'recent' : ''}` })).join('')}
             </div>`;
           }).join('')}
         </div>
@@ -713,15 +716,16 @@ function gameHTML(v) {
   const dt = g.discardTop;
   const showBuy = g.buyOpen && !myTurn && !(g.pendingBuy?.requesters || []).includes(me) && dt;
   const showShanghai = mods.shanghai && g.shanghaiWindow && g.shanghaiWindow.by !== me && dt && ui.mode?.kind !== 'shanghai';
+  const discardLabel = dt?.locked ? '🔒 Shanghaied' : dt?.by ? `From ${esc(dt.by === me ? 'you' : playerName(v, dt.by))}` : `Discard · ${g.discardCount}`;
   const piles = g.phase === 'turn' || g.phase === 'compose' ? `
     <div class="piles">
       <div class="pile">
-        ${backHTML(canDraw ? 'can' : '', canDraw ? 'data-act="draw" data-from="deck" role="button" tabindex="0"' : '')}
+        ${backHTML(canDraw ? 'can' : '', canDraw ? 'data-act="draw" data-from="deck" role="button" tabindex="0" aria-label="Draw from the deck"' : '')}
         <div class="pile-label">Deck · ${g.deckCount}</div>
       </div>
       <div class="pile">
         ${dt ? cardHTML(dt.id, { cls: `${canDraw && !dt.locked ? 'can' : ''} ${dt.locked ? 'locked' : ''}`, attrs: canDraw && !dt.locked ? 'data-act="draw" data-from="discard" role="button" tabindex="0"' : '' }) : '<div class="card slot"></div>'}
-        <div class="pile-label">${dt?.locked ? '🔒 Shanghaied' : `Discard · ${g.discardCount}`}</div>
+        <div class="pile-label">${discardLabel}</div>
       </div>
       <div class="pile-actions">
         ${showBuy ? `<button class="btn buy" data-act="buy">Buy ${label(dt.id)}<small>+2 penalty cards</small></button>` : ''}
@@ -940,7 +944,8 @@ const RULES_HTML = `
   <p><b>Jokers:</b> wild, one per meld. Down players can swap in the real card and must move the Joker somewhere else on the table.</p>
   <p><b>Shanghai:</b> discarding a card that could be played on the table? Call <i>Discard + Shanghai</i> so the next player can't take it. Forget, and anyone can yell <i>Shanghai!</i>, play it to the table, and pass you a random card from their hand.</p>
   <p><b>Scoring:</b> cards left in hand — Joker 50, Ace 20, K–10 10, 9–2 5.</p>
-  <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>`;
+  <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>
+  <p class="muted small">On the table, cards with a gold outline were played since your last turn.</p>`;
 
 function cardStyleModal() {
   const sample = ['H14.0', 'S13.0', 'D12.0', 'C11.0'];

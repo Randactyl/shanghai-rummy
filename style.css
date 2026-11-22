@@ -165,6 +165,8 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .card.back { background: var(--back-bg); border: 3px solid #fff; }
 .four-color .card.s-D { color: #1d64c9; }
 .four-color .card.s-C { color: #17803b; }
+/* played since your last turn */
+.card.mini.recent { background: #fff4d1; box-shadow: 0 0 0 2px var(--gold), 0 2px 8px rgba(242, 193, 78, 0.5); }
 .card.slot { background: transparent; border: 2px dashed rgba(255, 255, 255, 0.2); box-shadow: none; }
 .card.mini { width: var(--mw); height: var(--mh); border-radius: 5px; }
 .card.mini .corner { font-size: calc(var(--mw) * 0.36); left: 3px; top: 2px; }
