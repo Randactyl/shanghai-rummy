@@ -320,6 +320,7 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 .toast.error { background: #5a1d17; border-color: var(--danger); }
 .toast.buy { border-color: #3c74d6; }
 .toast.down, .toast.big { border-color: var(--gold); }
+.toast.turn { background: var(--gold); color: var(--gold-ink); border-color: transparent; font-weight: 800; text-align: center; font-size: 1rem; }
 .toast.out { opacity: 0; transform: translateY(-8px); }
 .flash { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; pointer-events: none; background: rgba(120, 10, 20, 0.25); transition: opacity 0.4s; }
 .flash.out { opacity: 0; }

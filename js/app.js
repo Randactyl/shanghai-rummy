@@ -36,6 +36,7 @@ const ui = {
   drag: null,
   renderQueued: false,
   roundKey: null,
+  turnKey: null,
   sortBy: sget('shrum.sort', null), // 'rank' | 'suit' | null (manual order)
 };
 
@@ -219,6 +220,8 @@ function leave() {
   Object.assign(app, { role: null, code: null, session: null, client: null, view: null, status: '', lastGood: null, resume: null, lostSince: null, takeover: null });
   Object.assign(ui, { selected: new Set(), order: [], staged: [], mode: null, modal: null, lastLog: null });
   history.replaceState(null, '', location.pathname + location.search);
+  ui.turnKey = null;
+  document.title = 'Shanghai Rummy';
   releaseWakeLock();
   render();
 }
@@ -248,6 +251,7 @@ function onView(v) {
   } else {
     ui.lastLog = null;
   }
+  notifyTurn(v);
   queueRender();
 }
 
@@ -287,12 +291,29 @@ function syncHand(g) {
 const stagedIds = () => new Set(ui.staged.flatMap((s) => s.cards));
 const sortHand = (ids, by) => (by === 'suit' ? sortBySuit(ids) : sortByRank(ids));
 
+/** Buzz + toast when it becomes your turn, and flag it in the tab title. */
+function notifyTurn(v) {
+  const g = v.game;
+  const myTurn = !!g && g.phase === 'turn' && g.players[g.current]?.id === v.me;
+  const key = myTurn ? `${app.code}:${g.round}:${g.turnNo}` : null;
+  if (key && key !== ui.turnKey) {
+    toast("It's your turn!", 'turn');
+    buzz([90, 60, 90]);
+  }
+  ui.turnKey = key;
+  document.title = myTurn ? '● Your turn · Shanghai Rummy' : 'Shanghai Rummy';
+}
+function buzz(pattern) {
+  // Browsers ignore vibrate() until the page has been tapped; iPhones don't support it at all.
+  try { if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(pattern); } catch {}
+}
+
 function announce(g) {
   const maxN = g.log.length ? g.log[g.log.length - 1].n : 0;
   if (ui.lastLog == null) { ui.lastLog = maxN; return; }
   for (const e of g.log) {
     if (e.n <= ui.lastLog) continue;
-    if (e.kind === 'shanghai') shanghaiFlash(e.text);
+    if (e.kind === 'shanghai') { shanghaiFlash(e.text); buzz(200); }
     else if (['buy', 'down', 'big'].includes(e.kind)) toast(e.text, e.kind);
   }
   ui.lastLog = maxN;
