@@ -1,5 +1,5 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
-import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, mayPlayOn, isFullyDown, describeMeld, checkLayDownCounts } from './rules.js';
+import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, mayPlayOn, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
 import { HostSession } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
@@ -36,7 +36,20 @@ const ui = {
   drag: null,
   renderQueued: false,
   roundKey: null,
+  turnKey: null,
+  sortBy: sget('shrum.sort', null), // 'rank' | 'suit' | null (manual order)
 };
+
+// ------------------------------------------------------------------ card style (per device)
+
+const BACKS = [['blue', 'Classic'], ['red', 'Ruby'], ['green', 'Forest'], ['purple', 'Royal'], ['black', 'Midnight'], ['sunset', 'Sunset']];
+const prefs = { back: 'blue', four: false, ...sget('shrum.cards', {}) };
+function applyPrefs() {
+  document.documentElement.dataset.back = prefs.back;
+  document.documentElement.classList.toggle('four-color', !!prefs.four);
+  sset('shrum.cards', prefs);
+}
+applyPrefs();
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
@@ -207,6 +220,8 @@ function leave() {
   Object.assign(app, { role: null, code: null, session: null, client: null, view: null, status: '', lastGood: null, resume: null, lostSince: null, takeover: null });
   Object.assign(ui, { selected: new Set(), order: [], staged: [], mode: null, modal: null, lastLog: null });
   history.replaceState(null, '', location.pathname + location.search);
+  ui.turnKey = null;
+  document.title = 'Shanghai Rummy';
   releaseWakeLock();
   render();
 }
@@ -236,6 +251,7 @@ function onView(v) {
   } else {
     ui.lastLog = null;
   }
+  notifyTurn(v);
   queueRender();
 }
 
@@ -257,6 +273,8 @@ function syncHand(g) {
   const have = new Set(prior);
   const added = g.hand.filter((id) => !have.has(id));
   ui.order = prior.concat(added);
+  // A chosen sort sticks: new cards slot into place (the "just drawn" dot shows where they went).
+  if (ui.sortBy && added.length) ui.order = sortHand(ui.order, ui.sortBy);
   if (newRound) {
     ui.fresh = new Set();
     ui.staged = [];
@@ -271,13 +289,31 @@ function syncHand(g) {
 }
 
 const stagedIds = () => new Set(ui.staged.flatMap((s) => s.cards));
+const sortHand = (ids, by) => (by === 'suit' ? sortBySuit(ids) : sortByRank(ids));
+
+/** Buzz + toast when it becomes your turn, and flag it in the tab title. */
+function notifyTurn(v) {
+  const g = v.game;
+  const myTurn = !!g && g.phase === 'turn' && g.players[g.current]?.id === v.me;
+  const key = myTurn ? `${app.code}:${g.round}:${g.turnNo}` : null;
+  if (key && key !== ui.turnKey) {
+    toast("It's your turn!", 'turn');
+    buzz([90, 60, 90]);
+  }
+  ui.turnKey = key;
+  document.title = myTurn ? '● Your turn · Shanghai Rummy' : 'Shanghai Rummy';
+}
+function buzz(pattern) {
+  // Browsers ignore vibrate() until the page has been tapped; iPhones don't support it at all.
+  try { if (navigator.userActivation?.hasBeenActive !== false) navigator.vibrate?.(pattern); } catch {}
+}
 
 function announce(g) {
   const maxN = g.log.length ? g.log[g.log.length - 1].n : 0;
   if (ui.lastLog == null) { ui.lastLog = maxN; return; }
   for (const e of g.log) {
     if (e.n <= ui.lastLog) continue;
-    if (e.kind === 'shanghai') shanghaiFlash(e.text);
+    if (e.kind === 'shanghai') { shanghaiFlash(e.text); buzz(200); }
     else if (['buy', 'down', 'big'].includes(e.kind)) toast(e.text, e.kind);
   }
   ui.lastLog = maxN;
@@ -291,12 +327,21 @@ function cardHTML(id, { cls = '', attrs = '' } = {}) {
   }
   const r = rankLabel(rankOf(id));
   const s = SUIT_SYMBOL[suitOf(id)];
-  return `<div class="card ${isRed(id) ? 'red' : 'black'} ${cls}" data-card="${id}" ${attrs} aria-label="${esc(label(id))}"><span class="corner">${r}<i>${s}</i></span><span class="pip">${s}</span></div>`;
+  return `<div class="card ${isRed(id) ? 'red' : 'black'} s-${suitOf(id)} ${cls}" data-card="${id}" ${attrs} aria-label="${esc(label(id))}"><span class="corner">${r}<i>${s}</i></span><span class="pip">${s}</span></div>`;
 }
 const backHTML = (cls = '', attrs = '') => `<div class="card back ${cls}" ${attrs}></div>`;
 
+const svg = (d, size = 18) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const icon = {
-  copy: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+  copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 16),
+  share: svg('<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>'),
+  close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+  rules: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 7h6M9 11h6"/>'),
+  scores: svg('<path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
+  log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  menu: svg('<circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/>'),
+  palette: svg('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4.1-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10" cy="7" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/>'),
+  hand: svg('<rect x="3" y="5" width="11" height="15" rx="2"/><path d="M17 6.5 20 7.6a1.5 1.5 0 0 1 .9 1.9L17.5 19"/>', 14),
 };
 
 function playerName(v, pid) {
@@ -367,7 +412,7 @@ function homeHTML() {
         </div>` : ''}
     </section>
     <footer class="foot muted">
-      <button class="link" data-act="rules">How to play</button>
+      <button class="link" data-act="rules">How to play</button> · <button class="link" data-act="card-style">Card style</button>
       ${LOCAL ? ' · <b>Local test mode</b> (tabs in this browser only)' : ''}
     </footer>
   </main>`;
@@ -418,7 +463,7 @@ function lobbyHTML(v) {
       </div>
       <div class="share">
         <button class="btn" data-act="copy" data-text="${esc(link)}">${icon.copy} Copy invite link</button>
-        ${navigator.share ? `<button class="btn ghost" data-act="share" data-text="${esc(link)}">Share…</button>` : ''}
+        ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(link)}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
       </div>
     </header>
 
@@ -525,6 +570,97 @@ function recoveringHTML(v) {
 
 const cutOff = () => app.role === 'client' && !!app.lostSince;
 
+const BASE_MODS = ['wild', 'shanghai'];
+
+/** Short tags for rules that differ from the usual game, shown under the round name. */
+function ruleTags(mods) {
+  const tags = MOD_INFO.filter(([k]) => !BASE_MODS.includes(k) && mods[k]).map(([, name]) => name);
+  if (!mods.wild) tags.push('No Jokers');
+  if (!mods.shanghai) tags.push('No Shanghai');
+  return tags;
+}
+
+/** What this player can still lay down, and how the staged melds fill it. */
+function downPlan(g, me) {
+  const mods = g.settings.mods;
+  const req = g.req;
+  const have = g.down?.[me] || null;
+  const fully = isFullyDown(have, req);
+  const active = ['compose', 'turn'].includes(g.phase) && (!have || mods.seeingDouble || (mods.gambit && !fully));
+  if (!active) return { active: false };
+  const got = have || { groups: 0, runs: 0 };
+  const need = { group: Math.max(0, req.groups - got.groups), run: Math.max(0, req.runs - got.runs) };
+  const stagedOf = (t) => ui.staged.filter((s) => s.type === t).length;
+  const wants = (t) => (t === 'group' ? req.groups : req.runs) > 0 && (mods.seeingDouble || stagedOf(t) < need[t]);
+  const melds = ui.staged.map((s) => ({ type: s.type, cards: s.type === 'run' ? s.options[s.opt].cards : s.cards }));
+  const problem = ui.staged.length ? checkLayDownCounts(melds, got, req, mods) : 'nothing';
+  return { active: true, have, fully, need, wants, melds, ready: !problem, problem };
+}
+
+/** Does the current selection make a Group and/or a Run? */
+function selectionCheck(g, ids) {
+  const mods = g.settings.mods;
+  const out = { group: null, run: null, why: '' };
+  if (!ids.length) return out;
+  const g1 = analyzeGroup(ids, mods);
+  const r1 = arrangeRun(ids, mods);
+  if (g1.ok && !(mods.restrictive && ids.length !== MIN_GROUP)) out.group = g1;
+  if (r1.ok && !(mods.restrictive && ids.length !== MIN_RUN)) out.run = r1;
+  if (!out.group && !out.run) {
+    const kinds = [g.req.groups > 0 && 'group', g.req.runs > 0 && 'run'].filter(Boolean);
+    const min = Math.min(...kinds.map((k) => (k === 'group' ? MIN_GROUP : MIN_RUN)));
+    if (ids.length < min) out.why = `${ids.length} selected — pick ${min - ids.length} more`;
+    else if (mods.restrictive && g1.ok) out.why = `Restrictive Requirements: exactly ${MIN_GROUP} cards per Group`;
+    else if (mods.restrictive && r1.ok) out.why = `Restrictive Requirements: exactly ${MIN_RUN} cards per Run`;
+    else out.why = kinds.length === 2 ? `Not a Group or a Run yet` : kinds[0] === 'group' ? g1.err : r1.err;
+  }
+  return out;
+}
+
+const SLOT_HINT = (type, mods) => type === 'group'
+  ? (mods.crazy ? '3+ of one suit' : '3+ of the same rank')
+  : (mods.crazy ? '4+ in a row, any suits' : '4+ in a row, same suit');
+
+function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
+  const mods = g.settings.mods;
+  const slots = [];
+  // Staged melds first (in the order they were made), then empty slots for what's still needed.
+  ui.staged.forEach((s, i) => {
+    const cards = s.type === 'run' ? s.options[s.opt].cards : s.cards;
+    slots.push(`<div class="slot filled">
+      <div class="staged-head"><span>${s.type === 'run' ? 'Run' : 'Group'} ✓</span>
+        ${s.type === 'run' && s.options.length > 1 ? `<button class="icon-btn" data-act="flip-run" data-i="${i}" title="Move the Joker to the other end" aria-label="Move the Joker">⇄</button>` : ''}
+        <button class="icon-btn" data-act="unstage" data-i="${i}" aria-label="Put back in hand" title="Put back">✕</button></div>
+      <div class="meld">${cards.map((c) => cardHTML(c, { cls: 'mini' })).join('')}</div>
+    </div>`);
+  });
+  for (const type of ['group', 'run']) {
+    const missing = plan.need[type] - ui.staged.filter((s) => s.type === type).length;
+    for (let k = 0; k < missing; k++) {
+      const can = k === 0 && !!selCheck[type];
+      slots.push(`<div class="slot empty ${can ? 'can' : ''}" ${can ? `data-act="stage" data-type="${type}" role="button" tabindex="0"` : ''}>
+        <b>${type === 'group' ? 'Group' : 'Run'}</b><span>${can ? `Tap to add these ${ui.selected.size}` : SLOT_HINT(type, mods)}</span>
+      </div>`);
+    }
+  }
+  const sel = ui.selected.size;
+  let hint;
+  const fit = selCheck.group && plan.wants('group') ? 'Group' : selCheck.run && plan.wants('run') ? 'Run' : null;
+  if (sel && fit) hint = `That's a ${fit}! Tap <b>Make ${fit}</b> to set it aside here.`;
+  else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
+  else if (sel) hint = esc(selCheck.why);
+  else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
+  else if (!ui.staged.length && !plan.have) hint = `Tap cards in your hand to select them. ${g.req.groups ? 'A <b>Group</b> is ' + SLOT_HINT('group', mods) + '.' : ''} ${g.req.runs ? 'A <b>Run</b> is ' + SLOT_HINT('run', mods) + '.' : ''}`;
+  else if (plan.fully && mods.seeingDouble) hint = 'Seeing Double: you can lay down extra Groups/Runs.';
+  else hint = mods.gambit && ui.staged.length ? 'The Gambit: you can lay these down now, or keep going.' : 'Keep going — select the next set.';
+  const title = plan.fully ? 'Extra melds' : plan.have ? `Finish going down · ${esc(g.req.label)}` : `Going down · ${esc(g.req.label)}`;
+  return `<section class="planner ${plan.ready ? 'ready' : ''}">
+    <div class="planner-head"><b>${title}</b>${!myTurn ? '<span class="muted small">planning</span>' : ''}</div>
+    ${slots.length ? `<div class="slots">${slots.join('')}</div>` : ''}
+    <div class="planner-hint small">${hint}</div>
+  </section>`;
+}
+
 function gameHTML(v) {
   // Lost the host: show them offline and freeze the table until we're reconnected.
   if (cutOff()) v = { ...v, online: { ...v.online, [v.hostId]: false } };
@@ -538,21 +674,28 @@ function gameHTML(v) {
   const handIds = ui.order.filter((id) => !staged.has(id));
   const targets = computeTargets(v);
   const myDown = g.down?.[me];
+  const sel = ui.order.filter((id) => ui.selected.has(id));
+  const one = sel.length === 1 ? sel[0] : null;
+  const plan = downPlan(g, me);
+  const selCheck = plan.active ? selectionCheck(g, sel) : {};
+  const compose = g.phase === 'compose';
+  const ready = new Set(g.ready || []);
+  const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : null;
 
-  // ---- players strip
+  // ---- players
   const strip = g.players.map((p, i) => {
-    const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Partly down') : '';
+    const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Part down') : '';
     return `<div class="pchip ${i === g.current && g.phase === 'turn' ? 'turn' : ''} ${p.id === me ? 'me' : ''}">
-      <div class="pc-top"><span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span><span class="pc-name">${esc(p.name)}</span>${i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}</div>
-      <div class="pc-meta"><span title="Cards in hand">🂠 ${p.handCount}</span>${down ? `<span class="tag down">${down}</span>` : ''}<span class="muted" title="Total score">${p.total}</span></div>
+      <div class="pc-top"><span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span><span class="pc-name">${esc(p.name)}</span>${i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}${compose && ready.has(p.id) ? '<span class="tag ok" title="Ready">✓</span>' : ''}</div>
+      <div class="pc-meta"><span class="pc-cards" title="Cards in hand">${icon.hand}${p.handCount}</span>${down ? `<span class="tag down">${down}</span>` : ''}<b class="pc-score ${p.total === low ? 'lead' : ''}" title="Total score${p.total === low ? ' — lowest so far' : ''}">${p.total}</b></div>
     </div>`;
   }).join('');
 
   // ---- status
   let status = '';
   let statusCls = '';
-  if (g.phase === 'compose') {
-    status = `Arrange your hand — first card flips in <b data-until="${g.composeUntil}">…</b>`;
+  if (compose) {
+    status = `Arrange your hand — first card flips in <b data-until="${g.composeUntil}">…</b> <span class="muted">· ${ready.size}/${g.players.length} ready</span>`;
   } else if (g.phase === 'turn') {
     if (g.shanghaiPick) {
       const sp = g.shanghaiPick;
@@ -572,11 +715,10 @@ function gameHTML(v) {
       status = `Your turn — draw from the deck${g.discardTop && !g.discardTop.locked ? ` or take the ${label(g.discardTop.id)}` : ''}`;
     } else if (myTurn) {
       statusCls = 'mine';
-      const canDown = !myDown || (mods.gambit && !isFullyDown(myDown, g.req)) || mods.seeingDouble;
-      if (ui.selected.size === 1 && targets.size) status = 'Tap a highlighted meld to play the card, or discard it';
-      else if (!myDown) status = `Select cards to build ${esc(g.req.label)}, or discard to end your turn`;
-      else if (canDown && !isFullyDown(myDown, g.req)) status = 'Keep laying down, play on your own cards, or discard';
-      else status = 'Play cards onto the table, then discard';
+      if (one && targets.size) status = 'Tap a glowing meld on the table to play it — or discard it';
+      else if (!myDown) status = plan.ready ? 'Ready to go down — tap Lay down' : `Build ${esc(g.req.label)} to go down, or discard to end your turn`;
+      else if (plan.active && !plan.fully) status = 'Keep laying down, play on your own cards, or discard';
+      else status = 'Select a card to play it on the table, or discard to end your turn';
     } else {
       status = `${esc(cur.name)}'s turn${g.turnStep === 'draw' ? '' : ' · drew a card'}`;
     }
@@ -586,6 +728,9 @@ function gameHTML(v) {
   // Players who were removed keep their cards on the table (others can still play on them).
   const owners = [...g.players, ...g.departed.map((p) => ({ ...p, left: true }))].filter((p) => g.melds.some((m) => m.owner === p.id));
   const modeActive = targets.size > 0 || !!ui.mode;
+  // "Recent" = played during the last lap of turns, i.e. everything since your own previous turn.
+  const recentAfter = g.turnNo - g.players.length;
+  const isRecent = (c) => (g.played?.[c] ?? -Infinity) > recentAfter;
   const table = owners.length
     ? owners.map((p) => `
       <div class="owner">
@@ -595,7 +740,7 @@ function gameHTML(v) {
             const t = targets.get(m.id);
             const isSrc = ui.mode?.kind === 'jokerTarget' && ui.mode.meldId === m.id;
             return `<div class="meld ${t ? 'target' : modeActive ? 'dim' : ''} ${isSrc ? 'source' : ''}" ${t ? `data-act="meld" data-meld="${m.id}" role="button" tabindex="0"` : ''} title="${esc(describeMeld(m, mods))}">
-              ${m.cards.map((c) => cardHTML(c, { cls: 'mini' })).join('')}
+              ${m.cards.map((c) => cardHTML(c, { cls: `mini ${isRecent(c) ? 'recent' : ''}` })).join('')}
             </div>`;
           }).join('')}
         </div>
@@ -607,46 +752,37 @@ function gameHTML(v) {
   const dt = g.discardTop;
   const showBuy = g.buyOpen && !myTurn && !(g.pendingBuy?.requesters || []).includes(me) && dt;
   const showShanghai = mods.shanghai && g.shanghaiWindow && g.shanghaiWindow.by !== me && dt && ui.mode?.kind !== 'shanghai';
-  const piles = g.phase === 'turn' || g.phase === 'compose' ? `
+  const discardLabel = dt?.locked ? '🔒 Shanghaied' : dt?.by ? `From ${esc(dt.by === me ? 'you' : playerName(v, dt.by))}` : `Discard · ${g.discardCount}`;
+  const piles = `
     <div class="piles">
       <div class="pile">
-        ${backHTML(canDraw ? 'can' : '', canDraw ? 'data-act="draw" data-from="deck" role="button" tabindex="0"' : '')}
+        ${backHTML(canDraw ? 'can' : '', canDraw ? 'data-act="draw" data-from="deck" role="button" tabindex="0" aria-label="Draw from the deck"' : '')}
         <div class="pile-label">Deck · ${g.deckCount}</div>
       </div>
       <div class="pile">
         ${dt ? cardHTML(dt.id, { cls: `${canDraw && !dt.locked ? 'can' : ''} ${dt.locked ? 'locked' : ''}`, attrs: canDraw && !dt.locked ? 'data-act="draw" data-from="discard" role="button" tabindex="0"' : '' }) : '<div class="card slot"></div>'}
-        <div class="pile-label">${dt?.locked ? '🔒 Shanghaied' : `Discard · ${g.discardCount}`}</div>
+        <div class="pile-label">${discardLabel}</div>
       </div>
       <div class="pile-actions">
         ${showBuy ? `<button class="btn buy" data-act="buy">Buy ${label(dt.id)}<small>+2 penalty cards</small></button>` : ''}
         ${showShanghai ? `<button class="btn shanghai" data-act="shanghai">Shanghai!</button>` : ''}
         ${ui.mode ? `<button class="btn ghost" data-act="cancel-mode">Cancel</button>` : ''}
       </div>
-    </div>` : '';
+    </div>`;
 
-  // ---- staging tray
-  const tray = ui.staged.length ? `
-    <div class="tray">
-      ${ui.staged.map((s, i) => {
-        const cards = s.type === 'run' ? s.options[s.opt].cards : s.cards;
-        return `<div class="staged">
-          <div class="staged-head"><span>${s.type === 'run' ? 'Run' : 'Group'}</span>
-            ${s.type === 'run' && s.options.length > 1 ? `<button class="icon-btn" data-act="flip-run" data-i="${i}" title="Move the Joker">⇄</button>` : ''}
-            <button class="icon-btn" data-act="unstage" data-i="${i}" aria-label="Put back">✕</button></div>
-          <div class="meld">${cards.map((c) => cardHTML(c, { cls: 'mini' })).join('')}</div>
-        </div>`;
-      }).join('')}
-    </div>` : '';
-
-  // ---- hand + actions
-  const sel = [...ui.selected];
-  const one = sel.length === 1 ? sel[0] : null;
-  const canStage = canPlayStep && (!myDown || mods.seeingDouble || (mods.gambit && !isFullyDown(myDown, g.req)));
+  // ---- actions
   const actions = [];
+  if (compose) {
+    const iam = ready.has(me);
+    actions.push(`<button class="btn ${iam ? 'ghost' : 'primary'}" data-act="ready" data-ready="${iam ? 0 : 1}">${iam ? '✓ Ready (undo)' : "I'm ready"}</button>`);
+    if (app.role === 'host') actions.push(`<button class="btn" data-act="flip-now" title="Skip the rest of the countdown">Flip now</button>`);
+  }
+  if (plan.active && !ui.mode) {
+    if (selCheck.group && plan.wants('group')) actions.push(`<button class="btn" data-act="stage" data-type="group">Make Group</button>`);
+    if (selCheck.run && plan.wants('run')) actions.push(`<button class="btn" data-act="stage" data-type="run">Make Run</button>`);
+  }
   if (canPlayStep) {
-    if (canStage && sel.length >= 3 && g.req.groups > 0) actions.push(`<button class="btn" data-act="stage" data-type="group">Make Group</button>`);
-    if (canStage && sel.length >= 4 && g.req.runs > 0) actions.push(`<button class="btn" data-act="stage" data-type="run">Make Run</button>`);
-    if (ui.staged.length) actions.push(`<button class="btn primary" data-act="laydown">Lay down ${ui.staged.length === 1 ? '1 meld' : ui.staged.length + ' melds'}</button>`);
+    if (ui.staged.length) actions.push(`<button class="btn primary" data-act="laydown" ${plan.ready ? '' : 'disabled'}>Lay down ${ui.staged.length === 1 ? '1 meld' : ui.staged.length + ' melds'}</button>`);
     if (one) {
       actions.push(`<button class="btn danger" data-act="discard">Discard ${label(one)}</button>`);
       if (mods.shanghai) actions.push(`<button class="btn ghost" data-act="discard" data-shanghai="1" title="Discard and block the next player from taking it">Discard + Shanghai</button>`);
@@ -654,33 +790,45 @@ function gameHTML(v) {
   }
   if (sel.length) actions.push(`<button class="btn ghost" data-act="deselect">Clear</button>`);
 
+  const tags = ruleTags(mods);
+  const sortBtn = (by, text) => `<button class="seg-btn ${ui.sortBy === by ? 'on' : ''}" data-act="sort" data-by="${by}" aria-pressed="${ui.sortBy === by}">${text}</button>`;
   return `
   <main class="game ${cutOff() ? 'frozen' : ''}">
     ${statusBar()}
     <header class="topbar">
-      <div class="round"><span class="muted">Round ${g.round + 1}/7</span> <b>${esc(g.req.label)}</b></div>
+      <button class="round" data-act="game-rules" title="Rules for this game">
+        <span class="round-line"><span class="muted">Round ${g.round + 1}/7</span> <b>${esc(g.req.label)}</b></span>
+        ${tags.length ? `<span class="rule-tags">${tags.map((t) => `<span class="tag rule">${esc(t)}</span>`).join('')}</span>` : ''}
+      </button>
       <div class="top-actions">
-        <button class="btn small ghost" data-act="scores">Scores</button>
-        <button class="btn small ghost" data-act="log">Log</button>
-        <button class="btn small ghost" data-act="menu" aria-label="Menu">⋯</button>
+        <button class="btn small ghost tb" data-act="game-rules" aria-label="Rules" title="Rules">${icon.rules}<span>Rules</span></button>
+        <button class="btn small ghost tb" data-act="scores" aria-label="Scores" title="Scores">${icon.scores}<span>Scores</span></button>
+        <button class="btn small ghost tb" data-act="log" aria-label="Game log" title="Game log">${icon.log}<span>Log</span></button>
+        <button class="btn small ghost tb" data-act="menu" aria-label="Menu" title="Menu">${icon.menu}</button>
       </div>
     </header>
-    <div class="strip">${strip}</div>
-    <div class="status ${statusCls}">${status}</div>
-    ${offlineNotice(v)}
-    <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
-    <section class="table">${table}</section>
-    ${piles}
-    ${tray}
-    <section class="hand-wrap">
-      <div class="hand-head">
-        <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} staged` : ''})</span></span>
-        <span class="sorts"><button class="btn small ghost" data-act="sort" data-by="rank">Sort by rank</button><button class="btn small ghost" data-act="sort" data-by="suit">by suit</button></span>
+    <div class="g-side">
+      <div class="strip">${strip}</div>
+      <div class="info">
+        <div class="status ${statusCls}">${status}</div>
+        ${offlineNotice(v)}
+        <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
       </div>
-      <div class="hand" id="hand">
-        ${handIds.map((id) => cardHTML(id, { cls: `${ui.selected.has(id) ? 'sel' : ''} ${ui.fresh.has(id) ? 'fresh' : ''}`, attrs: 'data-hand="1"' })).join('')}
-      </div>
-    </section>
+      ${piles}
+    </div>
+    <div class="g-main">
+      <section class="table">${table}</section>
+      ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
+      <section class="hand-wrap">
+        <div class="hand-head">
+          <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
+          <span class="seg" role="group" aria-label="Sort your hand"><span class="seg-label">Sort</span>${sortBtn('rank', 'Rank')}${sortBtn('suit', 'Suit')}</span>
+        </div>
+        <div class="hand" id="hand">
+          ${handIds.map((id) => cardHTML(id, { cls: `${ui.selected.has(id) ? 'sel' : ''} ${ui.fresh.has(id) ? 'fresh' : ''}`, attrs: 'data-hand="1"' })).join('')}
+        </div>
+      </section>
+    </div>
     <div class="actionbar ${actions.length ? '' : 'empty'}">${actions.join('')}</div>
   </main>`;
 }
@@ -749,54 +897,64 @@ function renderModal() {
   const mr = $('#modal-root');
   const forced = forcedModal();
   const m = forced || ui.modal;
-  const html = !m ? '' : `<div class="backdrop" ${forced ? '' : 'data-act="close-modal"'}>
-    <div class="modal ${m.cls || ''}" role="dialog" aria-modal="true">
-      ${m.title ? `<h2>${m.title}</h2>` : ''}
+  const closable = !forced;
+  const html = !m ? '' : `<div class="backdrop" ${closable ? 'data-act="close-modal"' : ''}>
+    ${m.confetti ? confettiHTML(m.confetti) : ''}
+    <div class="modal ${m.cls || ''}" role="dialog" aria-modal="true" aria-label="${esc(m.label || (m.title || '').replace(/<[^>]+>/g, ''))}">
+      ${m.title || closable ? `<header class="modal-head">
+        <h2>${m.title || ''}</h2>
+        ${closable ? `<button class="icon-btn modal-x" data-act="close-modal" aria-label="Close">${icon.close}</button>` : ''}
+      </header>` : ''}
       <div class="modal-body">${m.body}</div>
-      ${m.buttons ? `<div class="modal-btns">${m.buttons}</div>` : ''}
+      ${m.buttons ? `<footer class="modal-btns">${m.buttons}</footer>` : ''}
     </div></div>`;
-  if (html !== lastHTML.modal) { mr.innerHTML = html; lastHTML.modal = html; }
+  if (html !== lastHTML.modal) {
+    const prevScroll = mr.querySelector('.modal-body')?.scrollTop || 0;
+    const same = mr.querySelector('.modal')?.getAttribute('aria-label') === (m && esc(m.label || (m.title || '').replace(/<[^>]+>/g, '')));
+    mr.innerHTML = html;
+    lastHTML.modal = html;
+    // Keep the scroll position when the same dialog re-renders with fresh data.
+    if (same && mr.querySelector('.modal-body')) mr.querySelector('.modal-body').scrollTop = prevScroll;
+  }
 }
+
+/** Falling suits. Positions are derived from the seed so re-renders don't restart the animation. */
+function confettiHTML(seed) {
+  let x = seed * 9301 + 49297;
+  const rnd = () => ((x = (x * 9301 + 49297) % 233280) / 233280);
+  const suits = ['♥', '♠', '♦', '♣'];
+  return `<div class="confetti" aria-hidden="true">${Array.from({ length: 28 }, (_, i) => {
+    const s = suits[i % 4];
+    return `<i class="${s === '♥' || s === '♦' ? 'r' : ''}" style="left:${(rnd() * 100).toFixed(1)}%;animation-delay:${(rnd() * 1.2).toFixed(2)}s;animation-duration:${(2.4 + rnd() * 1.8).toFixed(2)}s;font-size:${(14 + rnd() * 18).toFixed(0)}px;--drift:${((rnd() - 0.5) * 120).toFixed(0)}px">${s}</i>`;
+  }).join('')}</div>`;
+}
+
+/** Players ranked by total, with tied players sharing a place. */
+function ranked(players, totalOf = (p) => p.total) {
+  const list = players.slice().sort((a, b) => totalOf(a) - totalOf(b));
+  return list.map((p) => ({ p, place: 1 + list.filter((q) => totalOf(q) < totalOf(p)).length }));
+}
+const outCount = (g, pid) => g.scores.filter((s) => s.out === pid).length;
+const ordinal = (n) => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
 
 function forcedModal() {
   const v = app.view;
   const g = v?.game;
   if (!g) return null;
   const isHost = app.role === 'host';
+  const hostName = esc(playerName(v, v.hostId));
   if (g.phase === 'dealerDraw') {
     const dealer = g.players[g.dealer];
     return {
       title: 'Who deals first?',
-      body: `${g.dealDraw ? `<p class="muted small">Everyone pulled a card — lowest deals (Joker high, Ace high, ties ♥ ♠ ♦ ♣).</p>
+      body: `${g.dealDraw ? `<p class="muted small center">Everyone pulled a card — lowest deals (Joker high, Ace high, ties ♥ ♠ ♦ ♣).</p>
         <div class="draws">${g.dealDraw.map((d) => `<div class="draw ${d.pid === dealer.id ? 'win' : ''}">${cardHTML(d.card)}<div>${esc(playerName(v, d.pid))}</div></div>`).join('')}</div>` : ''}
         <p class="center"><b>${esc(dealer.name)}</b> deals first. ${esc(g.players[(g.dealer + 1) % g.players.length].name)} plays first.</p>`,
-      buttons: isHost ? `<button class="btn primary" data-act="next-round">Deal round 1</button>` : `<span class="muted">Waiting for the host to deal…</span>`,
+      buttons: isHost ? `<button class="btn primary" data-act="next-round">Deal round 1</button>` : `<span class="muted">Waiting for ${hostName} to deal…</span>`,
     };
   }
-  if (g.phase === 'roundEnd' || g.phase === 'gameEnd') {
-    const last = g.scores[g.scores.length - 1];
-    const final = g.phase === 'gameEnd';
-    if (final) {
-      const ranked = g.players.slice().sort((a, b) => a.total - b.total);
-      return {
-        title: `🏆 ${esc(ranked[0].name)} wins!`,
-        cls: 'wide',
-        body: `<ol class="standings">${ranked.map((p, i) => `<li class="${i === 0 ? 'win' : ''}"><span>${esc(p.name)}</span><b>${p.total}</b></li>`).join('')}</ol>${scoreTable(g)}`,
-        buttons: isHost ? `<button class="btn primary" data-act="end-game">Back to lobby</button>` : `<button class="btn ghost" data-act="leave">Leave</button>`,
-      };
-    }
-    return {
-      title: `${esc(playerName(v, last.out))} went out!`,
-      cls: 'wide',
-      body: `<p class="muted center">Round ${last.round + 1} · ${esc(ROUNDS[last.round].label)}</p>
-        <div class="results">${g.players.map((p) => `
-          <div class="result">
-            <div class="res-head"><b>${esc(p.name)}</b><span>+${last.pts[p.id]} <span class="muted">→ ${p.total}</span></span></div>
-            <div class="meld">${(g.revealed?.[p.id] || []).map((c) => cardHTML(c, { cls: 'mini' })).join('') || '<span class="muted small">no cards 🎉</span>'}</div>
-          </div>`).join('')}</div>`,
-      buttons: isHost ? `<button class="btn primary" data-act="next-round">${last.round + 1 >= ROUNDS.length ? 'Final results' : `Deal round ${last.round + 2}`}</button>` : `<span class="muted">Waiting for the host…</span>`,
-    };
-  }
+  if (g.phase === 'gameEnd') return gameEndModal(v, isHost, hostName);
+  if (g.phase === 'roundEnd') return roundEndModal(v, isHost, hostName);
   if (g.phase === 'turn' && g.shanghaiPick && g.shanghaiPick.discarder === v.me) {
     const sp = g.shanghaiPick;
     return {
@@ -808,13 +966,111 @@ function forcedModal() {
   return null;
 }
 
+function roundEndModal(v, isHost, hostName) {
+  const g = v.game;
+  const last = g.scores[g.scores.length - 1];
+  const outName = esc(playerName(v, last.out));
+  const before = (p) => p.total - (last.pts[p.id] || 0);
+  const prevPlace = new Map(ranked(g.players, before).map((r) => [r.p.id, r.place]));
+  const rows = ranked(g.players).map(({ p, place }) => {
+    const moved = g.scores.length > 1 ? prevPlace.get(p.id) - place : 0;
+    const cards = g.revealed?.[p.id] || [];
+    return `<li class="st ${p.id === last.out ? 'out' : ''} ${p.id === v.me ? 'me' : ''} ${place === 1 ? 'first' : ''}">
+      <span class="st-place">${place}</span>
+      <div class="st-main">
+        <div class="st-line"><b class="st-name">${esc(p.name)}</b>${p.id === last.out ? '<span class="tag gold">Went out</span>' : ''}${moved > 0 ? `<span class="move up" title="Up ${moved}">▲${moved}</span>` : moved < 0 ? `<span class="move down" title="Down ${-moved}">▼${-moved}</span>` : ''}</div>
+        <div class="st-cards">${cards.length ? cards.map((c) => cardHTML(c, { cls: 'mini' })).join('') : '<span class="muted small">No cards left</span>'}</div>
+      </div>
+      <div class="st-pts"><span class="st-round ${last.pts[p.id] ? '' : 'zero'}">+${last.pts[p.id]}</span><b class="st-total">${p.total}</b></div>
+    </li>`;
+  }).join('');
+  const nextR = ROUNDS[last.round + 1];
+  return {
+    label: `${playerName(v, last.out)} went out`,
+    cls: 'wide celebrate',
+    confetti: last.round + 1,
+    body: `<div class="hero">
+        <div class="hero-kicker">Round ${last.round + 1} of 7 · ${esc(ROUNDS[last.round].label)}</div>
+        <div class="hero-title"><span class="hero-name">${last.out === v.me ? 'You' : outName}</span> went out!</div>
+        ${last.out === v.me ? '<div class="hero-sub">Zero points for you this round.</div>' : ''}
+      </div>
+      <div class="st-cols muted small"><span>Standings</span><span>Round · Total</span></div>
+      <ol class="standings">${rows}</ol>
+      ${nextR ? `<p class="next-up">Up next · Round ${last.round + 2}: <b>${esc(nextR.label)}</b></p>` : '<p class="next-up">That was the last round!</p>'}`,
+    buttons: isHost
+      ? `<button class="btn primary big" data-act="next-round">${nextR ? `Deal round ${last.round + 2}` : 'See final results'}</button>`
+      : `<span class="muted">Waiting for ${hostName} to ${nextR ? 'deal the next round' : 'show the final results'}…</span>`,
+  };
+}
+
+function gameEndModal(v, isHost, hostName) {
+  const g = v.game;
+  const list = ranked(g.players);
+  const winners = list.filter((r) => r.place === 1).map((r) => r.p);
+  const title = winners.length > 1 ? `${winners.map((p) => esc(p.name)).join(' & ')} tie for the win!` : `${winners[0].id === v.me ? 'You win' : `${esc(winners[0].name)} wins`}!`;
+  const medal = ['🥇', '🥈', '🥉'];
+  // Podium order: 2nd, 1st, 3rd.
+  const podium = [list[1], list[0], list[2]].filter(Boolean);
+  const outs = (p) => { const n = outCount(g, p.id); return n ? `Went out ${n}×` : ''; };
+  return {
+    label: 'Final results',
+    cls: 'wide celebrate',
+    confetti: 99,
+    body: `<div class="hero">
+        <div class="hero-trophy">🏆</div>
+        <div class="hero-title">${title}</div>
+        <div class="hero-kicker">Final score ${winners[0].total} after ${g.scores.length} round${g.scores.length === 1 ? '' : 's'}</div>
+      </div>
+      <div class="podium">${podium.map(({ p, place }) => `
+        <div class="pod p${place} ${p.id === v.me ? 'me' : ''}">
+          <div class="pod-medal">${medal[place - 1] || ''}</div>
+          <div class="pod-name">${esc(p.name)}</div>
+          <div class="pod-score">${p.total}</div>
+          <div class="pod-block"><span>${ordinal(place)}</span></div>
+          <div class="pod-note small muted">${outs(p)}</div>
+        </div>`).join('')}</div>
+      ${list.length > 3 ? `<ol class="standings compact">${list.slice(3).map(({ p, place }) => `
+        <li class="st ${p.id === v.me ? 'me' : ''}"><span class="st-place">${place}</span><div class="st-main"><b class="st-name">${esc(p.name)}</b> <span class="muted small">${outs(p)}</span></div><div class="st-pts"><b class="st-total">${p.total}</b></div></li>`).join('')}</ol>` : ''}
+      <details class="fold"><summary>Round-by-round scores</summary>${scoreTable(g)}</details>`,
+    buttons: isHost ? `<button class="btn primary big" data-act="end-game">Back to lobby</button>` : `<span class="muted">${hostName} can start a new game from the lobby.</span> <button class="btn ghost" data-act="leave">Leave</button>`,
+  };
+}
+
 function scoreTable(g) {
-  if (!g.scores.length) return '<p class="muted center">No rounds finished yet.</p>';
+  const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : null;
+  const live = ['compose', 'turn'].includes(g.phase);
   return `<div class="scroll-x"><table class="scores">
-    <thead><tr><th>Round</th>${g.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
-    <tbody>${g.scores.map((s) => `<tr><td>${s.round + 1}</td>${g.players.map((p) => `<td class="${s.out === p.id ? 'out' : ''}">${s.pts[p.id]}</td>`).join('')}</tr>`).join('')}</tbody>
-    <tfoot><tr><th>Total</th>${g.players.map((p) => `<th>${p.total}</th>`).join('')}</tr></tfoot>
-  </table></div>`;
+    <thead><tr><th class="rcol">Round</th>${g.players.map((p) => `<th>${esc(p.name)}</th>`).join('')}</tr></thead>
+    <tbody>${ROUNDS.map((r, i) => {
+      const s = g.scores.find((x) => x.round === i);
+      const now = live && i === g.round;
+      return `<tr class="${s ? '' : now ? 'now' : 'later'}">
+        <th class="rcol" title="${esc(r.label)}"><span class="rnum">${i + 1}</span><span class="rlabel">${esc(r.label)}</span></th>
+        ${g.players.map((p) => s
+          ? `<td class="${s.out === p.id ? 'out' : ''}">${s.out === p.id ? '★ ' : ''}${s.pts[p.id] ?? '–'}</td>`
+          : `<td class="muted">${now ? '…' : ''}</td>`).join('')}
+      </tr>`;
+    }).join('')}</tbody>
+    <tfoot><tr><th class="rcol">Total</th>${g.players.map((p) => `<th class="${p.total === low ? 'lead' : ''}">${p.total}</th>`).join('')}</tr></tfoot>
+  </table></div>
+  <p class="muted small center">★ went out · lowest total wins</p>`;
+}
+
+function scoresModal(g) {
+  const v = app.view;
+  const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : 0;
+  const rows = ranked(g.players).map(({ p, place }) => `
+    <li class="st ${p.id === v.me ? 'me' : ''} ${place === 1 && g.scores.length ? 'first' : ''}">
+      <span class="st-place">${g.scores.length ? place : '–'}</span>
+      <div class="st-main"><b class="st-name">${esc(p.name)}</b>${outCount(g, p.id) ? ` <span class="muted small">went out ${outCount(g, p.id)}×</span>` : ''}</div>
+      <div class="st-pts">${g.scores.length && p.total > low ? `<span class="st-round behind">+${p.total - low} behind</span>` : ''}<b class="st-total">${p.total}</b></div>
+    </li>`).join('');
+  return {
+    title: 'Scores',
+    cls: 'wide',
+    body: `${g.scores.length ? `<ol class="standings">${rows}</ol>` : '<p class="muted center">No rounds finished yet — lowest score after 7 rounds wins.</p>'}
+      ${scoreTable(g)}`,
+  };
 }
 
 const RULES_HTML = `
@@ -822,11 +1078,52 @@ const RULES_HTML = `
   <ol class="rounds">${ROUNDS.map((r) => `<li>${r.label}</li>`).join('')}</ol>
   <p><b>Group:</b> 3+ cards of the same value. <b>Run:</b> 4+ cards of one suit in sequence (Aces high).</p>
   <p><b>Your turn:</b> draw from the deck or discard pile → lay down the round's requirement if you have it (you're now <i>down</i>) → once down, play cards on anyone's table cards → discard.</p>
+  <h3>Going down, step by step</h3>
+  <ol class="steps">
+    <li>Tap cards in your hand to select them, e.g. three 7s.</li>
+    <li>When they make a Group or Run, tap <b>Make Group</b> / <b>Make Run</b> (or the glowing slot). They're set aside in the <b>Going down</b> tray.</li>
+    <li>Repeat until every slot in the tray is filled, then tap <b>Lay down</b>. You can fill the tray while waiting for your turn.</li>
+    <li>Once you're down, select a single card and tap a glowing meld on the table to play it there. Then discard to end your turn.</li>
+  </ol>
   <p><b>Buying:</b> after the current player draws, anyone else can buy the top discard. You also take 2 penalty cards. Ties go to whoever's turn comes sooner.</p>
   <p><b>Jokers:</b> wild, one per meld. Down players can swap in the real card and must move the Joker somewhere else on the table.</p>
   <p><b>Shanghai:</b> discarding a card that could be played on the table? Call <i>Discard + Shanghai</i> so the next player can't take it. Forget, and anyone can yell <i>Shanghai!</i>, play it to the table, and pass you a random card from their hand.</p>
   <p><b>Scoring:</b> cards left in hand — Joker 50, Ace 20, K–10 10, 9–2 5.</p>
-  <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>`;
+  <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>
+  <p class="muted small">On the table, cards with a gold outline were played since your last turn.</p>`;
+
+/** The rules for the game in progress: this round, the table, and which modifiers are on. */
+function gameRulesModal(g) {
+  const mods = g.settings.mods;
+  const on = MOD_INFO.filter(([k]) => mods[k]);
+  const off = MOD_INFO.filter(([k]) => !mods[k]);
+  return {
+    title: 'Rules for this game',
+    cls: 'wide',
+    body: `<div class="rule-now"><span class="muted small">Round ${g.round + 1} of 7</span><b>${esc(g.req.label)}</b></div>
+      <p class="muted small center">${g.settings.decks} deck${g.settings.decks === 1 ? '' : 's'} · ${mods.wild ? 'Jokers wild' : 'no Jokers'} · ${g.settings.composeSeconds}s to arrange your hand</p>
+      <h3>Modifiers in play</h3>
+      <div class="mods">${on.length ? on.map(([k, name, desc]) => `<div class="mod on static"><span><b>${name}</b><span class="muted small">${desc}</span></span></div>`).join('') : '<p class="muted">None — classic rules.</p>'}</div>
+      ${off.length ? `<p class="muted small">Not in play: ${off.map(([, name]) => name).join(', ')}.</p>` : ''}
+      <details class="fold"><summary>How to play</summary>${RULES_HTML}</details>`,
+  };
+}
+
+function cardStyleModal() {
+  const sample = ['H14.0', 'S13.0', 'D12.0', 'C11.0'];
+  return {
+    title: 'Card style',
+    body: `<p class="muted small center">Only changes how cards look on this device.</p>
+      <h3>Card back</h3>
+      <div class="backs">${BACKS.map(([k, name]) => `<button class="back-opt ${prefs.back === k ? 'on' : ''}" data-act="set-back" data-back="${k}" aria-pressed="${prefs.back === k}">
+        <div class="card back" data-back="${k}"></div><span>${name}</span></button>`).join('')}</div>
+      <h3>Suits</h3>
+      <label class="mod ${prefs.four ? 'on' : ''}"><input type="checkbox" id="four-color" ${prefs.four ? 'checked' : ''}>
+        <span><b>Four-color suits</b><span class="muted small">Diamonds blue and Clubs green, so suits are easier to tell apart.</span></span></label>
+      <div class="sample">${sample.map((c) => cardHTML(c)).join('')}</div>`,
+    buttons: '<button class="btn primary" data-act="close-modal">Done</button>',
+  };
+}
 
 // ------------------------------------------------------------------ toasts
 
@@ -898,7 +1195,12 @@ const handlers = {
     sset('shrum.host', null);
     leave();
   },
-  rules() { ui.modal = { title: 'How to play', body: RULES_HTML, buttons: '<button class="btn" data-act="close-modal">Got it</button>' }; renderModal(); },
+  rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
+  'game-rules'() { ui.modal = gameRulesModal(app.view.game); renderModal(); },
+  'card-style'() { ui.modal = cardStyleModal(); renderModal(); },
+  'set-back'(el) { prefs.back = el.dataset.back; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); },
+  ready(el) { act({ type: 'ready', ready: el.dataset.ready === '1' }); },
+  'flip-now'() { act({ type: 'flip' }); },
   'close-modal'() { ui.modal = null; renderModal(); },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('Invite link copied'); }
@@ -926,8 +1228,12 @@ const handlers = {
     ui.modal = {
       title: 'Menu',
       body: `<div class="menu">
-        <button class="btn wide" data-act="rules">How to play</button>
-        <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>
+        <button class="btn wide" data-act="game-rules">${icon.rules} Rules for this game</button>
+        <button class="btn wide" data-act="card-style">${icon.palette} Card style</button>
+        <div class="row">
+          <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>
+          ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(shareLink(app.code))}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
+        </div>
         ${isHost && app.view.game.players.length > 1 ? `<button class="btn wide" data-act="handoff-list">Pass hosting to someone else…</button>` : ''}
         ${isHost && app.view.game.players.length > 1 ? `<button class="btn wide" data-act="drop-list">Remove a player…</button>` : ''}
         ${isHost ? `<button class="btn wide danger" data-act="abandon">End game for everyone</button>` : `<button class="btn wide ghost" data-act="leave">Leave game</button>`}
@@ -1008,10 +1314,10 @@ const handlers = {
     ui.modal = null;
     app.session?.endGame();
   },
-  scores() { ui.modal = { title: 'Scores', cls: 'wide', body: scoreTable(app.view.game), buttons: '<button class="btn" data-act="close-modal">Close</button>' }; renderModal(); },
+  scores() { ui.modal = scoresModal(app.view.game); renderModal(); },
   log() {
     const g = app.view.game;
-    ui.modal = { title: 'Game log', body: `<ul class="log">${g.log.slice().reverse().map((e) => `<li class="${e.kind}">${esc(e.text)}</li>`).join('')}</ul>`, buttons: '<button class="btn" data-act="close-modal">Close</button>' };
+    ui.modal = { title: 'Game log', body: `<ul class="log">${g.log.slice().reverse().map((e) => `<li class="${e.kind}">${esc(e.text)}</li>`).join('')}</ul>` };
     renderModal();
   },
   draw(el) { ui.fresh = new Set(); act({ type: 'draw', from: el.dataset.from }); },
@@ -1030,14 +1336,17 @@ const handlers = {
   sort(el) {
     const staged = stagedIds();
     const ids = ui.order.filter((id) => !staged.has(id));
-    const sorted = el.dataset.by === 'suit' ? sortBySuit(ids) : sortByRank(ids);
-    ui.order = sorted.concat(ui.order.filter((id) => staged.has(id)));
+    ui.sortBy = el.dataset.by;
+    sset('shrum.sort', ui.sortBy);
+    ui.order = sortHand(ids, ui.sortBy).concat(ui.order.filter((id) => staged.has(id)));
     render();
   },
   stage(el) {
     const g = app.view.game;
     const mods = g.settings.mods;
     const ids = ui.order.filter((id) => ui.selected.has(id));
+    const plan = downPlan(g, app.view.me);
+    if (!plan.active || !plan.wants(el.dataset.type)) return;
     if (el.dataset.type === 'group') {
       const r = analyzeGroup(ids, mods);
       if (!r.ok) return toast(r.err, 'error');
@@ -1062,8 +1371,7 @@ const handlers = {
   discard(el) {
     const card = [...ui.selected][0];
     if (!card) return;
-    if (ui.staged.length && !confirm('You have cards staged to lay down. Discard anyway (they go back to your hand)?')) return;
-    ui.staged = [];
+    // Anything in the Going down tray stays there for next turn.
     act({ type: 'discard', cardId: card, shanghai: !!el.dataset.shanghai });
   },
   meld(el) {
@@ -1110,6 +1418,7 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.id === 'four-color') { prefs.four = t.checked; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); return; }
   if (!app.session) return;
   if (t.dataset.mod) app.session.updateSettings({ mods: { [t.dataset.mod]: t.checked } });
   else if (t.name === 'dm') app.session.updateSettings({ dealerMethod: t.value, pickedDealer: t.value === 'pick' ? ($('#picked')?.value || null) : app.view.lobby.settings.pickedDealer });
@@ -1161,6 +1470,9 @@ function endDrag(e) {
     const staged = stagedIds();
     const domOrder = [...$('#hand').querySelectorAll('.card[data-hand]')].map((c) => c.dataset.card);
     ui.order = domOrder.concat(ui.order.filter((id) => staged.has(id)));
+    // Arranging by hand switches off the sticky sort.
+    ui.sortBy = null;
+    sset('shrum.sort', null);
     render();
   } else if (e.type === 'pointerup') {
     if (ui.mode?.kind === 'shanghai') { ui.mode = null; }

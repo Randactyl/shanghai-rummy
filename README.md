@@ -66,16 +66,25 @@ browser talk to each other directly, with no network at all.
 1. The host enters a name, clicks **Host a new game**, and shares the invite link (or the 5-letter code).
 2. Players join. The host sets the seat order, which is the turn order, and the table settings and modifiers.
    The host then clicks **Start game**.
-3. On your turn, tap the deck or the discard pile to draw.
-   - **Lay down:** select cards, then tap *Make Group* / *Make Run* to stage them, then *Lay down*.
+3. While hands are dealt, everyone has a few seconds to arrange. Tap *I'm ready*; the first card flips as soon
+   as everyone is ready, or the host can tap *Flip now*.
+4. On your turn, tap the deck or the discard pile to draw. You get a buzz (on phones that support it) and a
+   toast when your turn starts.
+   - **Lay down:** the *Going down* tray shows a slot for each Group/Run the round needs. Select cards; when
+     they make a valid set, tap *Make Group* / *Make Run* (or the glowing slot). Once every slot is filled,
+     tap *Lay down*. You can fill the tray while waiting for your turn.
      If a run's Joker could go at either end, use ⇄ to move it.
    - **Play on the table** (once you're down): select one card. Every meld it fits on lights up; tap one.
      If the card can replace a Joker, you'll be offered the swap. You then tap where the Joker goes.
    - **Discard:** select one card, then *Discard* (or *Discard + Shanghai* to call the defensive Shanghai).
-4. Off-turn, a **Buy** button appears once the current player has drawn. A **Shanghai!** button appears
+5. Off-turn, a **Buy** button appears once the current player has drawn. A **Shanghai!** button appears
    right after someone discards.
-5. Drag cards in your hand to rearrange them, or use the sort buttons.
-6. If someone disconnects for good, the host can remove them from the "is disconnected" banner, or from
+6. Drag cards in your hand to rearrange them, or pick *Sort: Rank / Suit*. A chosen sort sticks, so newly
+   drawn cards slot into place (the gold dot shows where); dragging a card switches back to your own order.
+7. Cards on the table with a gold outline were played since your last turn. Tap the round name (or *Rules*)
+   to see which modifiers are on. *⋯ → Card style* changes card backs and turns on four-color suits, just for
+   your device.
+8. If someone disconnects for good, the host can remove them from the "is disconnected" banner, or from
    ⋯ → *Remove a player*.
 
 **The host's page must stay open for the whole game.** A laptop is the best host. If a phone hosts, the app

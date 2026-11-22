@@ -49,6 +49,15 @@ const reqOf = (state) => ROUNDS[state.round];
 const top = (state) => state.discard[state.discard.length - 1] || null;
 const n = (state) => state.players.length;
 
+/** Remember which turn each table card arrived on, so players can see what's new. */
+function markPlayed(state, ids) {
+  state.played ||= {};
+  for (const id of ids) state.played[id] = state.turnNo;
+}
+
+/** Everyone still in the game has tapped "Ready" during the arrange-hand countdown. */
+const allReady = (state) => state.players.every((p) => (state.ready || []).includes(p.id));
+
 export function newGame(players, settings, ctx = {}) {
   const rng = ctx.rng || defaultRng;
   const state = {
@@ -66,6 +75,7 @@ export function newGame(players, settings, ctx = {}) {
     pendingBuy: null, shanghaiPick: null, lastDiscard: null,
     revealed: null, composeUntil: null, dealDraw: null,
     meldSeq: 0, log: [], logSeq: 0,
+    ready: [], played: {},
   };
   if (settings.dealerMethod === 'pick' && seatOf(state, settings.pickedDealer) >= 0) {
     state.dealer = seatOf(state, settings.pickedDealer);
@@ -131,6 +141,8 @@ function startRound(state, ctx) {
   state.shanghaiPick = null;
   state.lastDiscard = null;
   state.turnNo = 0;
+  state.ready = [];
+  state.played = {};
   for (const p of state.players) state.hands[p.id] = [];
   for (let c = 0; c < HAND_SIZE; c++) {
     for (let k = 1; k <= n(state); k++) {
@@ -153,6 +165,7 @@ function flip(state) {
   state.turnStep = 'draw';
   state.turnNo = 1;
   state.composeUntil = null;
+  state.ready = [];
   log(state, `The ${label(card)} was flipped. ${nameOf(state, state.players[state.current].id)} goes first.`);
 }
 
@@ -237,6 +250,19 @@ export function apply(prev, pid, action, ctx = {}) {
     flip(state);
     return state;
   }
+  if (t === 'ready') {
+    // During the arrange-hand countdown: once everyone is ready, flip early.
+    if (state.phase !== 'compose') fail('Not now');
+    if (seatOf(state, pid) < 0) fail('You are not in this game');
+    const r = new Set(state.ready || []);
+    if (action.ready === false) r.delete(pid); else r.add(pid);
+    state.ready = [...r];
+    if (allReady(state)) {
+      log(state, 'Everyone is ready.');
+      flip(state);
+    }
+    return state;
+  }
   if (t === 'resolveBuy') {
     if (!isSystem) fail('Not allowed');
     if (!state.pendingBuy) return state;
@@ -308,6 +334,7 @@ export function apply(prev, pid, action, ctx = {}) {
       if (ld.by === me) fail("You can't Shanghai your own discard");
       const meld = findMeld(state, action.meldId);
       placeOnMeld(state, meld, ld.id, action.end);
+      markPlayed(state, [ld.id]);
       state.discard.pop();
       state.lastDiscard = null;
       const order = shuffle(state.hands[me], rng);
@@ -349,6 +376,7 @@ export function apply(prev, pid, action, ctx = {}) {
         state.meldSeq += 1;
         state.melds.push({ ...m, id: `m${state.meldSeq}`, owner: me });
         for (const c of m.cards) removeFromHand(state, me, c);
+        markPlayed(state, m.cards);
       }
       const counts = {
         groups: existing.groups + melds.filter((m) => m.type === 'group').length,
@@ -369,6 +397,7 @@ export function apply(prev, pid, action, ctx = {}) {
       if (!state.hands[me].includes(action.cardId)) fail('That card is not in your hand');
       placeOnMeld(state, meld, action.cardId, action.end);
       removeFromHand(state, me, action.cardId);
+      markPlayed(state, [action.cardId]);
       log(state, `${nameOf(state, me)} played the ${label(action.cardId)} on ${meld.owner === me ? 'their own' : nameOf(state, meld.owner) + "'s"} ${describeMeld(meld, mods)}.`);
       checkOut(state, me);
       return state;
@@ -392,6 +421,7 @@ export function apply(prev, pid, action, ctx = {}) {
       if (!mayPlayOn(me, tgt, state.down, req, mods)) fail("You can't play the Joker there");
       placeOnMeld(state, tgt, jokerId, action.target.end);
       removeFromHand(state, me, card);
+      markPlayed(state, [card, jokerId]);
       log(state, `${nameOf(state, me)} swapped the ${label(card)} for a Joker and moved it to ${tgt.owner === me ? 'their own' : nameOf(state, tgt.owner) + "'s"} ${describeMeld(tgt, mods)}.`);
       checkOut(state, me);
       return state;
@@ -459,6 +489,8 @@ function dropPlayer(state, target, rng) {
   if (state.dealDraw) state.dealDraw = state.dealDraw.filter((d) => d.pid !== target);
 
   log(state, `${name} was removed from the game${midRound && hand.length ? ` — their ${hand.length} cards were shuffled into the deck` : ''}.`, 'big');
+  if (state.ready) state.ready = state.ready.filter((p) => p !== target);
+  if (N >= 2 && state.phase === 'compose' && state.ready?.length && allReady(state)) flip(state);
   if (N < 2) {
     state.phase = 'gameEnd';
     state.pendingBuy = null;
@@ -573,6 +605,8 @@ export function viewFor(state, pid) {
     dealDraw: state.dealDraw,
     departed: state.departed || [],
     composeUntil: state.composeUntil,
+    ready: state.ready || [],
+    played: state.played || {},
     log: state.log.slice(-30),
   };
 }
