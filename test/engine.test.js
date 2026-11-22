@@ -335,3 +335,53 @@ test('Seeing Double: extra required-type melds on later turns', () => {
   t = apply(t, b, { type: 'draw', from: 'deck' });
   assert.throws(() => apply(t, b, { type: 'layDown', melds: [{ type: 'group', cards: ['H6.1', 'S6.1', 'D6.1'] }] }), /already down/);
 });
+
+test('arrange-hand countdown: flips early once everyone is ready; host can flip any time', () => {
+  const rng = seeded(3);
+  const players = [0, 1, 2].map((i) => ({ id: 'p' + i, name: 'P' + i }));
+  const settings = { ...DEFAULT_SETTINGS, decks: 2, composeSeconds: 30, mods: M() };
+  let s = apply(newGame(players, settings, { rng }), SYSTEM, { type: 'startRound' }, { rng, now: 0 });
+  assert.equal(s.phase, 'compose');
+  s = apply(s, 'p0', { type: 'ready' });
+  s = apply(s, 'p1', { type: 'ready' });
+  s = apply(s, 'p1', { type: 'ready', ready: false });
+  assert.deepEqual(viewFor(s, 'p2').ready, ['p0']);
+  s = apply(s, 'p1', { type: 'ready' });
+  assert.equal(s.phase, 'compose');
+  assert.throws(() => apply(s, 'zz', { type: 'ready' }), RuleError);
+  s = apply(s, 'p2', { type: 'ready' });
+  assert.equal(s.phase, 'turn');
+  assert.deepEqual(s.ready, []);
+  assert.throws(() => apply(s, 'p0', { type: 'ready' }), /Not now/);
+});
+
+test('host can flip early; non-hosts cannot', () => {
+  const rng = seeded(4);
+  const players = [0, 1].map((i) => ({ id: 'p' + i, name: 'P' + i }));
+  const settings = { ...DEFAULT_SETTINGS, decks: 1, composeSeconds: 30, mods: M() };
+  let s = apply(newGame(players, settings, { rng }), SYSTEM, { type: 'startRound' }, { rng, now: 0 });
+  assert.throws(() => apply(s, 'p1', { type: 'flip' }), RuleError);
+  s = apply(s, 'p0', { type: 'flip' }, { isHost: true });
+  assert.equal(s.phase, 'turn');
+});
+
+test('table cards remember the turn they were played on', () => {
+  let { s, rng } = setup(2);
+  const a = s.players[s.current].id;
+  s.hands[a] = ['H7.0', 'S7.0', 'D7.0', 'H9.0', 'S9.0', 'X1.0', 'C2.0', 'C4.0', 'C6.0', 'D11.0', 'D13.0'];
+  s.deck.push('C7.0');
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s = apply(s, a, { type: 'layDown', melds: [
+    { type: 'group', cards: ['H7.0', 'S7.0', 'D7.0'] },
+    { type: 'group', cards: ['H9.0', 'S9.0', 'X1.0'] },
+  ] }, { rng });
+  const t = s.turnNo;
+  const v = viewFor(s, a);
+  for (const c of ['H7.0', 'S7.0', 'D7.0', 'H9.0', 'S9.0', 'X1.0']) assert.equal(v.played[c], t);
+  s = apply(s, a, { type: 'layOff', meldId: s.melds[0].id, cardId: 'C7.0' }, { rng });
+  assert.equal(viewFor(s, a).played['C7.0'], t);
+  s.hands[a] = ['C3.0'];
+  s = apply(s, a, { type: 'discard', cardId: 'C3.0' }, { rng });
+  s = apply(s, SYSTEM, { type: 'startRound' }, { rng, now: 0 });
+  assert.deepEqual(viewFor(s, a).played, {}, 'reset each round');
+});
