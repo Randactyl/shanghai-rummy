@@ -122,11 +122,25 @@ The first player of the round collects all cards. They are now the Dealer of the
 
 |Term|Definition|
 |----|----------|
+|Buy|taking the top card of the discard pile when it isn't your turn. You also draw two penalty cards from the deck. See [Buying a Card](#out-of-order-play---buying-a-card)|
+|Dealer|shuffles the deck and sets up gameplay|
+|Deck|the face-down pile players draw from|
+|Discard pile|the face-up pile next to the deck. Each turn ends by adding a card to it, and the top card can be drawn instead of a card from the deck|
+|Down Player (fully down)|a player who has laid down all of the round's requirement|
+|Go down (lay down)|play the round's requirement face up in front of you, making you a Down Player|
+|Go out|get rid of your last card, by discarding it or by playing it to the table. It ends the round, and you score zero for that round|
 |Group|three or more cards with the same face value|
+|Joker (wild card)|stands in for any card in a Group or Run. One per meld. See [The Wild](#the-wild)|
+|Meld|a Group or a Run, once it's on the table|
+|Partially-down player|with [The Gambit](#the-gambit), a player who has laid down part of the round's requirement but not all of it|
+|Penalty cards|the two extra cards from the deck that come with a buy|
+|Play on the table (lay off)|add a card from your hand to any meld on the table. Only Down Players can|
+|Round requirement (hand requirement)|the Groups and/or Runs you must lay down to go down this round. See [Round Requirements](#round-requirements)|
 |Run|four or more cards of the same suit with sequential face value (Aces high)|
 |Scorekeeper|keeps track of player score and announces requirements for each round|
-|Dealer|shuffles deck and sets up gameplay|
-|Down Player|a player who has collected all cards required for the round and has played them face up on the table|
+|Shanghai|calling out a discard that could have been played on the table. Defensive: the discarder calls it to protect the card. Offensive: another player calls it and plays the card. See [The Shanghai](#the-shanghai)|
+|Stalemate|when everyone is down and no card left in the game can be played on the table. The round ends with everyone scoring their hand|
+|Swap (a Joker)|replace a Joker on the table with the natural card it stands for, then play the Joker somewhere else on the table|
 
 ## Optional Gameplay Modifiers
 

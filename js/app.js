@@ -1100,6 +1100,25 @@ const RULES_HTML = `
   <p class="muted small">Stalemate: if everyone is down and no card left in the game can be played on the table, nobody can go out. The round ends and everyone scores their hand.</p>
   <p class="muted small">On the table, cards with a gold outline were played since your last turn.</p>`;
 
+/** Words the game uses, defined once. Mirrors the glossary in RULES.md. */
+const GLOSSARY = [
+  ['Meld', 'A Group or a Run, once it\'s on the table.'],
+  ['Group', '3+ cards of the same value (with Crazy Cards: of the same suit).'],
+  ['Run', '4+ cards of one suit in sequence, Aces high (with Crazy Cards: any suits).'],
+  ['Round requirement', 'The Groups and/or Runs this round asks for, shown at the top of the screen.'],
+  ['Go down', 'Lay the round requirement face up on the table. You\'re then <i>down</i>.'],
+  ['Part down', 'With The Gambit: you\'ve laid down some of the requirement, but not all of it.'],
+  ['Play on the table', 'Add a card from your hand to any meld. Only players who are down can.'],
+  ['Go out', 'Get rid of your last card. It ends the round, and you score zero for it.'],
+  ['Joker', 'Wild: stands in for any card, one per meld.'],
+  ['Swap', 'Replace a Joker on the table with the real card, then move the Joker to another meld.'],
+  ['Buy', 'Take the top discard when it isn\'t your turn, plus 2 penalty cards from the deck.'],
+  ['Shanghai', 'Calling out a discard that could have been played on the table.'],
+  ['Stalemate', 'Everyone is down and no card left can be played, so the round ends.'],
+];
+const GLOSSARY_HTML = `<details class="fold"><summary>Glossary</summary>
+  <dl class="glossary">${GLOSSARY.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl></details>`;
+
 /** The rules for the game in progress: this round, the table, and which modifiers are on. */
 function gameRulesModal(g) {
   const mods = g.settings.mods;
@@ -1113,7 +1132,8 @@ function gameRulesModal(g) {
       <h3>Modifiers in play</h3>
       <div class="mods">${on.length ? on.map(([k, name, desc]) => `<div class="mod on static"><span><b>${name}</b><span class="muted small">${desc}</span></span></div>`).join('') : '<p class="muted">None — classic rules.</p>'}</div>
       ${off.length ? `<p class="muted small">Not in play: ${off.map(([, name]) => name).join(', ')}.</p>` : ''}
-      <details class="fold"><summary>How to play</summary>${RULES_HTML}</details>`,
+      <details class="fold"><summary>How to play</summary>${RULES_HTML}</details>
+      ${GLOSSARY_HTML}`,
   };
 }
 
@@ -1203,7 +1223,7 @@ const handlers = {
     sset('shrum.host', null);
     leave();
   },
-  rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
+  rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML + GLOSSARY_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
   'game-rules'() { ui.modal = gameRulesModal(app.view.game); renderModal(); },
   'card-style'() { ui.modal = cardStyleModal(); renderModal(); },
   'set-back'(el) { prefs.back = el.dataset.back; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); },

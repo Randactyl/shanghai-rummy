@@ -365,6 +365,10 @@ table.scores { border-collapse: collapse; width: 100%; font-variant-numeric: tab
 .log li.shanghai { color: #ff9c8f; font-weight: 700; }
 .log li.big, .log li.down { font-weight: 700; }
 .log li.buy { color: #9cc0ff; }
+.glossary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 6px 0 4px; }
+.glossary dt { font-weight: 700; }
+.glossary dd { margin: 0; }
+@media (max-width: 420px) { .glossary { grid-template-columns: 1fr; gap: 0; } .glossary dd { margin-bottom: 8px; } }
 ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 
 /* ---------- toasts & flash */
