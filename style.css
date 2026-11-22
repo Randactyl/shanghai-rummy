@@ -234,7 +234,11 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 
 .hand-wrap { margin-top: 10px; }
 .hand-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 700; flex-wrap: wrap; }
-.sorts { display: flex; gap: 2px; }
+.seg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--panel-line); border-radius: 999px; font-size: 0.82rem; font-weight: 600; }
+.seg-label { color: var(--ink-dim); font-weight: 500; padding: 0 4px 0 8px; }
+.seg-btn { border: 0; background: transparent; border-radius: 999px; padding: 4px 12px; min-height: 28px; cursor: pointer; }
+.seg-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.seg-btn.on { background: rgba(242, 193, 78, 0.2); color: var(--gold); }
 .hand { display: flex; flex-wrap: wrap; gap: 5px; padding: 14px 0 8px; justify-content: center; min-height: calc(var(--ch) + 22px); }
 .hand .card { cursor: pointer; touch-action: none; transition: transform 0.12s, box-shadow 0.12s; }
 .hand .card.sel { transform: translateY(-12px); box-shadow: 0 0 0 3px var(--gold), 0 8px 16px rgba(0, 0, 0, 0.45); }

@@ -36,6 +36,7 @@ const ui = {
   drag: null,
   renderQueued: false,
   roundKey: null,
+  sortBy: sget('shrum.sort', null), // 'rank' | 'suit' | null (manual order)
 };
 
 // ------------------------------------------------------------------ card style (per device)
@@ -268,6 +269,8 @@ function syncHand(g) {
   const have = new Set(prior);
   const added = g.hand.filter((id) => !have.has(id));
   ui.order = prior.concat(added);
+  // A chosen sort sticks: new cards slot into place (the "just drawn" dot shows where they went).
+  if (ui.sortBy && added.length) ui.order = sortHand(ui.order, ui.sortBy);
   if (newRound) {
     ui.fresh = new Set();
     ui.staged = [];
@@ -282,6 +285,7 @@ function syncHand(g) {
 }
 
 const stagedIds = () => new Set(ui.staged.flatMap((s) => s.cards));
+const sortHand = (ids, by) => (by === 'suit' ? sortBySuit(ids) : sortByRank(ids));
 
 function announce(g) {
   const maxN = g.log.length ? g.log[g.log.length - 1].n : 0;
@@ -755,6 +759,7 @@ function gameHTML(v) {
   }
   if (sel.length) actions.push(`<button class="btn ghost" data-act="deselect">Clear</button>`);
 
+  const sortBtn = (by, text) => `<button class="seg-btn ${ui.sortBy === by ? 'on' : ''}" data-act="sort" data-by="${by}" aria-pressed="${ui.sortBy === by}">${text}</button>`;
   return `
   <main class="game ${cutOff() ? 'frozen' : ''}">
     ${statusBar()}
@@ -776,7 +781,7 @@ function gameHTML(v) {
     <section class="hand-wrap">
       <div class="hand-head">
         <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
-        <span class="sorts"><button class="btn small ghost" data-act="sort" data-by="rank">Sort by rank</button><button class="btn small ghost" data-act="sort" data-by="suit">by suit</button></span>
+        <span class="seg" role="group" aria-label="Sort your hand"><span class="seg-label">Sort</span>${sortBtn('rank', 'Rank')}${sortBtn('suit', 'Suit')}</span>
       </div>
       <div class="hand" id="hand">
         ${handIds.map((id) => cardHTML(id, { cls: `${ui.selected.has(id) ? 'sel' : ''} ${ui.fresh.has(id) ? 'fresh' : ''}`, attrs: 'data-hand="1"' })).join('')}
@@ -1174,8 +1179,9 @@ const handlers = {
   sort(el) {
     const staged = stagedIds();
     const ids = ui.order.filter((id) => !staged.has(id));
-    const sorted = el.dataset.by === 'suit' ? sortBySuit(ids) : sortByRank(ids);
-    ui.order = sorted.concat(ui.order.filter((id) => staged.has(id)));
+    ui.sortBy = el.dataset.by;
+    sset('shrum.sort', ui.sortBy);
+    ui.order = sortHand(ids, ui.sortBy).concat(ui.order.filter((id) => staged.has(id)));
     render();
   },
   stage(el) {
@@ -1307,6 +1313,9 @@ function endDrag(e) {
     const staged = stagedIds();
     const domOrder = [...$('#hand').querySelectorAll('.card[data-hand]')].map((c) => c.dataset.card);
     ui.order = domOrder.concat(ui.order.filter((id) => staged.has(id)));
+    // Arranging by hand switches off the sticky sort.
+    ui.sortBy = null;
+    sset('shrum.sort', null);
     render();
   } else if (e.type === 'pointerup') {
     if (ui.mode?.kind === 'shanghai') { ui.mode = null; }
