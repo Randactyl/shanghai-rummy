@@ -56,6 +56,8 @@ A player may also go out by playing every card in their hand to the table, with 
 
 If the deck runs out, shuffle the discard pile, except its top card, to make a new deck.
 
+**Stalemate.** Once every player is down, the only way to get rid of cards is to play them on the table. If no card left in the game (in anyone's hand, the deck or the discard pile) can ever be played there, nobody can go out. This happens, for example, when every Group already holds all the cards of its rank and both Jokers are on the table. The round ends at the next discard, and every player scores the cards in their hand. Online, the game spots this automatically.
+
 #### Out of Order Play - Buying a Card
 
 While the current player is taking their turn (*after* the current player has drawn a card and *before* the current player discards a card) any other player can buy the top card from the discard pile. Down Players may buy too.

@@ -985,14 +985,18 @@ function roundEndModal(v, isHost, hostName) {
     </li>`;
   }).join('');
   const nextR = ROUNDS[last.round + 1];
+  const hero = last.out
+    ? `<div class="hero-title"><span class="hero-name">${last.out === v.me ? 'You' : outName}</span> went out!</div>
+        ${last.out === v.me ? '<div class="hero-sub">Zero points for you this round.</div>' : ''}`
+    : `<div class="hero-title">Stalemate</div>
+        <div class="hero-sub">No card left could be played, so nobody could go out. Everyone scores their hand.</div>`;
   return {
-    label: `${playerName(v, last.out)} went out`,
-    cls: 'wide celebrate',
-    confetti: last.round + 1,
+    label: last.out ? `${playerName(v, last.out)} went out` : 'Stalemate',
+    cls: last.out ? 'wide celebrate' : 'wide',
+    confetti: last.out ? last.round + 1 : 0,
     body: `<div class="hero">
         <div class="hero-kicker">Round ${last.round + 1} of 7 · ${esc(ROUNDS[last.round].label)}</div>
-        <div class="hero-title"><span class="hero-name">${last.out === v.me ? 'You' : outName}</span> went out!</div>
-        ${last.out === v.me ? '<div class="hero-sub">Zero points for you this round.</div>' : ''}
+        ${hero}
       </div>
       <div class="st-cols muted small"><span>Standings</span><span>Round · Total</span></div>
       <ol class="standings">${rows}</ol>
@@ -1090,6 +1094,7 @@ const RULES_HTML = `
   <p><b>Shanghai:</b> discarding a card that could be played on the table? Call <i>Discard + Shanghai</i> so the next player can't take it. Forget, and anyone can yell <i>Shanghai!</i>, play it to the table, and pass you a random card from their hand.</p>
   <p><b>Scoring:</b> cards left in hand — Joker 50, Ace 20, K–10 10, 9–2 5.</p>
   <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>
+  <p class="muted small">Stalemate: if everyone is down and no card left in the game can be played on the table, nobody can go out. The round ends and everyone scores their hand.</p>
   <p class="muted small">On the table, cards with a gold outline were played since your last turn.</p>`;
 
 /** The rules for the game in progress: this round, the table, and which modifiers are on. */

@@ -21,6 +21,10 @@
   --gutter: 16px;
   color-scheme: dark;
 }
+/* Phones in portrait: cards follow the screen width (≈45px wide on a 390px phone, 52px max). */
+@media (max-width: 699px) {
+  :root { --cw: clamp(40px, 11.5vw, 52px); --ch: calc(var(--cw) * 1.42); --mw: calc(var(--cw) * 0.66); --mh: calc(var(--mw) * 1.42); }
+}
 @media (min-width: 700px) and (min-height: 561px) {
   :root { --cw: 64px; --ch: 90px; --mw: 40px; --mh: 56px; }
 }
@@ -389,9 +393,32 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* ---------- phones in landscape: table on the left, players/piles/actions on the right, hand always visible */
+/* ---------- phones in portrait: a tighter single column */
+@media (max-width: 699px) and (orientation: portrait), (max-width: 699px) and (min-height: 561px) {
+  .topbar { padding-top: 4px; padding-bottom: 2px; }
+  .strip { gap: 6px; padding: 2px 2px 6px; }
+  .pchip { padding: 4px 8px; min-width: 96px; gap: 0; }
+  .status { padding: 7px 10px; min-height: 36px; font-size: 0.92rem; }
+  .ticker { min-height: 2.5em; padding: 2px; font-size: 0.82rem; }
+  .table { padding: 8px; gap: 6px; min-height: 70px; }
+  .melds { gap: 6px; }
+  .owner-name { margin-bottom: 2px; }
+  .piles { padding: 8px 0 2px; gap: 10px; }
+  .planner { padding: 6px 8px 8px; }
+  .planner-head { margin-bottom: 4px; }
+  .slot { min-height: calc(var(--mh) + 22px); }
+  .slot.empty { min-width: 86px; padding: 4px 8px; }
+  .planner-hint { margin-top: 4px; font-size: 0.78rem; }
+  .hand-wrap { margin-top: 6px; }
+  .hand { gap: 4px; padding: 12px 0 6px; min-height: calc(var(--ch) + 18px); }
+  .actionbar { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .actionbar > .btn { min-height: 40px; padding: 8px 14px; }
+}
+
+/* ---------- phones in landscape: table on the left, players/piles/actions on the right, hand always visible.
+   Cards follow the screen height so the hand still fits under a browser's toolbars (≈38×54 at 340px tall). */
 @media (orientation: landscape) and (max-height: 560px) {
-  :root { --cw: 44px; --ch: 62px; --mw: 30px; --mh: 42px; }
+  :root { --ch: clamp(46px, 16dvh, 62px); --cw: calc(var(--ch) * 0.71); --mh: calc(var(--ch) * 0.68); --mw: calc(var(--mh) * 0.71); }
   .game {
     display: grid; height: 100vh; height: 100dvh; max-width: none; column-gap: 12px;
     padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0 max(var(--gutter), env(safe-area-inset-left));
@@ -400,18 +427,23 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
     grid-template-areas: 'bar bar' 'top top' 'main side' 'main actions';
   }
   .game > .statusbar { grid-area: bar; position: static; margin: 0 calc(-1 * var(--gutter)) 2px; padding: 4px 12px; }
-  .topbar { grid-area: top; padding: 4px 0 2px; }
+  .topbar { grid-area: top; padding: 2px 0 0; }
   .round { grid-auto-flow: column; align-items: center; justify-content: start; gap: 8px; }
   .g-main { grid-area: main; display: flex; flex-direction: column; gap: 6px; min-height: 0; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
   .g-side { grid-area: side; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
-  .table { flex: 1 1 auto; min-height: 70px; overflow-y: auto; align-content: start; padding: 8px; }
+  .table { flex: 1 1 auto; min-height: 50px; overflow-y: auto; align-content: start; padding: 6px 8px; }
   .planner { margin-top: 0; padding: 6px 8px; flex: none; }
   .planner-head { margin-bottom: 4px; }
   .slots { flex-wrap: nowrap; overflow-x: auto; }
-  .slot { flex: none; min-height: calc(var(--mh) + 26px); }
+  .slot { flex: none; min-height: calc(var(--mh) + 18px); }
+  .slot.filled { padding: 2px 4px 4px; }
+  .slot.empty { min-width: 80px; padding: 2px 8px; font-size: 0.7rem; }
+  .slot.empty b { font-size: 0.82rem; }
+  .planner-hint { margin-top: 2px; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hand-wrap { margin-top: 0; flex: none; }
-  .hand-head { font-size: 0.85rem; }
-  .hand { gap: 0; padding: 14px 0 2px; min-height: calc(var(--ch) + 16px); }
+  .hand-head { font-size: 0.82rem; }
+  .hand-head .seg-btn { min-height: 24px; padding: 2px 10px; }
+  .hand { gap: 0; padding: 12px 0 2px; min-height: calc(var(--ch) + 14px); }
   .hand .card + .card { margin-left: calc(var(--cw) * -0.2); }
   .strip { flex-direction: column; overflow: visible; padding: 0; gap: 4px; }
   .pchip { display: flex; align-items: center; gap: 8px; padding: 4px 8px; min-width: 0; }
