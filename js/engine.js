@@ -4,6 +4,7 @@
 import { buildDeck, shuffle, points, dealDrawValue, label, isJoker, defaultRng } from './cards.js';
 import {
   ROUNDS, analyzeMeld, layOffOptions, withCardAdded, checkLayDownCounts, isFullyDown, mayPlayOn, describeMeld,
+  couldStartMeld,
 } from './rules.js';
 
 export const SYSTEM = '#system';
@@ -169,6 +170,7 @@ function flip(state) {
   log(state, `The ${label(card)} was flipped. ${nameOf(state, state.players[state.current].id)} goes first.`);
 }
 
+/** outPid is null when the round ended in a stalemate (nobody could go out). */
 function endRound(state, outPid) {
   const pts = {};
   for (const p of state.players) pts[p.id] = state.hands[p.id].reduce((s, c) => s + points(c), 0);
@@ -178,7 +180,24 @@ function endRound(state, outPid) {
   state.pendingBuy = null;
   state.shanghaiPick = null;
   state.lastDiscard = null;
-  log(state, `${nameOf(state, outPid)} went out! Round ${state.round + 1} is over.`, 'big');
+  if (outPid) log(state, `${nameOf(state, outPid)} went out! Round ${state.round + 1} is over.`, 'big');
+  else log(state, `Stalemate — no card left can be played, so nobody can go out. Round ${state.round + 1} is over and everyone scores their hand.`, 'big');
+}
+
+/** Once everyone is fully down, the only way to shrink a hand is to get cards onto the table. If no card left
+ *  anywhere (hands, deck, discard) can ever get there, nobody can go out and the deck would cycle forever. */
+export function isStalemate(state) {
+  if (state.phase !== 'turn') return false;
+  const mods = state.settings.mods;
+  const req = reqOf(state);
+  if (!state.players.every((p) => isFullyDown(state.down[p.id], req))) return false;
+  const loose = [...state.players.flatMap((p) => state.hands[p.id] || []), ...state.deck, ...state.discard.map((d) => d.id)];
+  const jokerHasHome = (from, i) => state.melds.some((m) => m !== from
+    && layOffOptions(m, from.cards[i], mods).some((o) => o.kind === 'add'));
+  const reachesTable = (id) => state.melds.some((m) => layOffOptions(m, id, mods)
+    .some((o) => o.kind === 'add' || (o.kind === 'swap' && jokerHasHome(m, o.index))));
+  if (loose.some(reachesTable)) return false;
+  return !(mods.seeingDouble && couldStartMeld(loose, req, mods));
 }
 
 function checkOut(state, pid) {
@@ -445,6 +464,7 @@ export function apply(prev, pid, action, ctx = {}) {
       state.turnNo = nextTurn;
       state.turnStep = 'draw';
       state.lastDiscard = { id: card, by: me, turnNo: nextTurn, shanghai: defensive };
+      if (isStalemate(state)) endRound(state, null);
       return state;
     }
   }

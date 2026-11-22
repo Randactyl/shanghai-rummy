@@ -218,3 +218,29 @@ export function mayPlayOn(actor, meld, down, req, mods) {
   if (isFullyDown(mine, req)) return true;
   return !!mods.gambit && meld.owner === actor;
 }
+
+/** Could these loose cards ever form a new meld of a kind this round asks for? (Seeing Double stalemate check.)
+ *  Optimistic on purpose: it only answers "no" when no such meld can possibly be built from them. */
+export function couldStartMeld(ids, req, mods) {
+  const wild = mods.wild && ids.some(isJoker) ? 1 : 0;
+  const nat = ids.filter((id) => !isJoker(id));
+  if (req.groups) {
+    const counts = {};
+    for (const id of nat) { const k = mods.crazy ? suitOf(id) : rankOf(id); counts[k] = (counts[k] || 0) + 1; }
+    if (Object.values(counts).some((c) => c + wild >= MIN_GROUP)) return true;
+  }
+  if (req.runs) {
+    const ranks = {};
+    for (const id of nat) (ranks[mods.crazy ? '*' : suitOf(id)] ||= new Set()).add(runRank(rankOf(id), mods));
+    const starts = cyclic(mods) ? 13 : 14 - MIN_RUN; // cyclic: 1..13; otherwise 2..11
+    for (const set of Object.values(ranks)) {
+      for (let s = 0; s < starts; s++) {
+        const start = cyclic(mods) ? s + 1 : s + 2;
+        let have = 0;
+        for (let i = 0; i < MIN_RUN; i++) if (set.has(rankAt(start, i, mods))) have++;
+        if (have + wild >= MIN_RUN) return true;
+      }
+    }
+  }
+  return false;
+}

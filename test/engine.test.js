@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { arrangeRun, analyzeGroup, layOffOptions, validateRunOrder, checkLayDownCounts, ROUNDS } from '../js/rules.js';
 import { newGame, apply, viewFor, SYSTEM, DEFAULT_SETTINGS, RuleError } from '../js/engine.js';
-import { points, dealDrawValue } from '../js/cards.js';
+import { points, dealDrawValue, buildDeck } from '../js/cards.js';
+import { couldStartMeld } from '../js/rules.js';
 
 const M = (over = {}) => ({ ...DEFAULT_SETTINGS.mods, ...over });
 
@@ -384,4 +385,84 @@ test('table cards remember the turn they were played on', () => {
   s = apply(s, a, { type: 'discard', cardId: 'C3.0' }, { rng });
   s = apply(s, SYSTEM, { type: 'startRound' }, { rng, now: 0 });
   assert.deepEqual(viewFor(s, a).played, {}, 'reset each round');
+});
+
+// Round 1, one deck, both players down, every Group holds all four of its rank and both Jokers are on the table.
+function deadlocked(extraMods = {}) {
+  let { s, rng } = setup(2, extraMods);
+  const [a, b] = [s.players[s.current].id, s.players[(s.current + 1) % 2].id];
+  const all = (r) => ['H', 'S', 'D', 'C'].map((x) => `${x}${r}.0`);
+  s.melds = [
+    { id: 'm1', owner: a, type: 'group', rank: 8, cards: [...all(8), 'X1.0'] },
+    { id: 'm2', owner: a, type: 'group', rank: 13, cards: all(13) },
+    { id: 'm3', owner: b, type: 'group', rank: 6, cards: [...all(6), 'X2.0'] },
+    { id: 'm4', owner: b, type: 'group', rank: 5, cards: all(5) },
+  ];
+  s.down = { [a]: { groups: 2, runs: 0 }, [b]: { groups: 2, runs: 0 } };
+  const onTable = new Set(s.melds.flatMap((m) => m.cards));
+  const loose = buildDeck(1, true).filter((c) => !onTable.has(c));
+  s.hands[a] = ['H7.0', 'C3.0', 'D2.0'];
+  s.hands[b] = ['S9.0'];
+  const held = new Set([...s.hands[a], ...s.hands[b]]);
+  const rest = loose.filter((c) => !held.has(c));
+  s.discard = [{ id: rest.pop(), by: null, lock: null }];
+  s.deck = rest;
+  s.lastDiscard = null;
+  return { s, rng, a, b };
+}
+
+test('stalemate: everyone down and no card left can reach the table ends the round', () => {
+  let { s, rng, a, b } = deadlocked();
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s = apply(s, a, { type: 'discard', cardId: 'H7.0' }, { rng });
+  assert.equal(s.phase, 'roundEnd');
+  assert.equal(s.scores[0].out, null);
+  assert.ok(s.scores[0].pts[a] > 0 && s.scores[0].pts[b] > 0, 'everyone scores their hand');
+  assert.match(s.log.at(-1).text, /Stalemate/);
+  s = apply(s, SYSTEM, { type: 'startRound' }, { rng, now: 0 });
+  assert.equal(s.round, 1);
+});
+
+test('stalemate: not called while a playable card is still in the deck, or a player is not down', () => {
+  let { s, rng, a, b } = deadlocked();
+  // Free up one 5: it sits in the deck and could still go on the Group of 5s.
+  s.melds[3].cards = s.melds[3].cards.filter((c) => c !== 'C5.0');
+  s.deck.unshift('C5.0');
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s = apply(s, a, { type: 'discard', cardId: 'H7.0' }, { rng });
+  assert.equal(s.phase, 'turn');
+
+  ({ s, rng, a, b } = deadlocked());
+  delete s.down[b];
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s = apply(s, a, { type: 'discard', cardId: 'H7.0' }, { rng });
+  assert.equal(s.phase, 'turn', 'a player who is not down can still build melds');
+});
+
+test('stalemate: a loose Joker or a swappable Joker with somewhere to go keeps the round alive', () => {
+  let { s, rng, a } = deadlocked();
+  // Joker back in the deck: it can join the Group of Ks (which has no Joker).
+  s.melds[0].cards = s.melds[0].cards.filter((c) => c !== 'X1.0');
+  s.deck.unshift('X1.0');
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s = apply(s, a, { type: 'discard', cardId: 'H7.0' }, { rng });
+  assert.equal(s.phase, 'turn');
+});
+
+test('stalemate with Seeing Double: only when no new meld can be built either', () => {
+  const req = ROUNDS[0];
+  assert.ok(couldStartMeld(['H7.0', 'S7.0', 'D7.0'], req, M()));
+  assert.ok(couldStartMeld(['H7.0', 'S7.0', 'X1.0'], req, M()));
+  assert.ok(!couldStartMeld(['H7.0', 'S7.0', 'D9.0'], req, M()));
+  const runs = ROUNDS[2];
+  assert.ok(couldStartMeld(['H2.0', 'H3.0', 'H5.0', 'X1.0'], runs, M()));
+  assert.ok(!couldStartMeld(['H13.0', 'H14.0', 'H2.0', 'H3.0'], runs, M()), 'no wrap without Two Ways');
+  assert.ok(couldStartMeld(['H13.0', 'H14.0', 'H2.0', 'H3.0'], runs, M({ twoWays: true })));
+  assert.ok(couldStartMeld(['H2.0', 'S3.0', 'D4.0', 'C5.0'], runs, M({ crazy: true })));
+
+  // The deadlocked table still has three loose 7s, so with Seeing Double the round goes on.
+  let { s, rng, a } = deadlocked({ seeingDouble: true });
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s = apply(s, a, { type: 'discard', cardId: 'H7.0' }, { rng });
+  assert.equal(s.phase, 'turn');
 });
