@@ -197,7 +197,17 @@ export function checkLayDownCounts(melds, existing, req, mods) {
     if (g > req.groups) return `Only ${req.groups} Group${req.groups === 1 ? '' : 's'} this round`;
     if (r > req.runs) return `Only ${req.runs} Run${req.runs === 1 ? '' : 's'} this round`;
   }
-  if (!mods.gambit && (g < req.groups || r < req.runs)) return `You need ${req.label} to go down`;
+  const partial = g < req.groups || r < req.runs;
+  if (partial && !mods.gambit) return `You need ${req.label} to go down`;
+  if (partial) {
+    // The Gambit: until a lay-down completes the round, it's the bare requirement — no extra copies,
+    // no extra cards — so you always keep enough cards to finish.
+    if (g > req.groups || r > req.runs) return "The Gambit: extra Groups/Runs wait until you're fully down";
+    for (const m of melds) {
+      const min = m.type === 'group' ? MIN_GROUP : MIN_RUN;
+      if (m.cards.length !== min) return `The Gambit: until you're fully down, a ${m.type === 'group' ? 'Group' : 'Run'} is exactly ${min} cards`;
+    }
+  }
   if (mods.restrictive) {
     for (const m of melds) {
       const min = m.type === 'group' ? MIN_GROUP : MIN_RUN;
@@ -209,14 +219,6 @@ export function checkLayDownCounts(melds, existing, req, mods) {
 
 export function isFullyDown(counts, req) {
   return !!counts && counts.groups >= req.groups && counts.runs >= req.runs;
-}
-
-/** Can `actor` play cards onto `meld`? down: map pid -> {groups, runs}. */
-export function mayPlayOn(actor, meld, down, req, mods) {
-  const mine = down[actor];
-  if (!mine) return false;
-  if (isFullyDown(mine, req)) return true;
-  return !!mods.gambit && meld.owner === actor;
 }
 
 /** Could these loose cards ever form a new meld of a kind this round asks for? (Seeing Double stalemate check.)

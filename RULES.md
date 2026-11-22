@@ -122,11 +122,25 @@ The first player of the round collects all cards. They are now the Dealer of the
 
 |Term|Definition|
 |----|----------|
+|Buy|taking the top card of the discard pile when it isn't your turn. You also draw two penalty cards from the deck. See [Buying a Card](#out-of-order-play---buying-a-card)|
+|Dealer|shuffles the deck and sets up gameplay|
+|Deck|the face-down pile players draw from|
+|Discard pile|the face-up pile next to the deck. Each turn ends by adding a card to it, and the top card can be drawn instead of a card from the deck|
+|Down Player (fully down)|a player who has laid down all of the round's requirement|
+|Go down (lay down)|play the round's requirement face up in front of you, making you a Down Player|
+|Go out|get rid of your last card, by discarding it or by playing it to the table. It ends the round, and you score zero for that round|
 |Group|three or more cards with the same face value|
+|Joker (wild card)|stands in for any card in a Group or Run. One per meld. See [The Wild](#the-wild)|
+|Meld|a Group or a Run, once it's on the table|
+|Partially-down player|with [The Gambit](#the-gambit), a player who has laid down part of the round's requirement but not all of it|
+|Penalty cards|the two extra cards from the deck that come with a buy|
+|Play on the table (lay off)|add a card from your hand to any meld on the table. Only Down Players can|
+|Round requirement (hand requirement)|the Groups and/or Runs you must lay down to go down this round. See [Round Requirements](#round-requirements)|
 |Run|four or more cards of the same suit with sequential face value (Aces high)|
 |Scorekeeper|keeps track of player score and announces requirements for each round|
-|Dealer|shuffles deck and sets up gameplay|
-|Down Player|a player who has collected all cards required for the round and has played them face up on the table|
+|Shanghai|calling out a discard that could have been played on the table. Defensive: the discarder calls it to protect the card. Offensive: another player calls it and plays the card. See [The Shanghai](#the-shanghai)|
+|Stalemate|when everyone is down and no card left in the game can be played on the table. The round ends with everyone scoring their hand|
+|Swap (a Joker)|replace a Joker on the table with the natural card it stands for, then play the Joker somewhere else on the table|
 
 ## Optional Gameplay Modifiers
 
@@ -148,10 +162,14 @@ The first player of the round collects all cards. They are now the Dealer of the
 
 > *"Are you feeling lucky?"*
 
-- Players may lay down hand requirements as they have them. Down cards do not count toward end of round scoring.
-- Partially-down players can add to their own partial downs.
-- Partially-down players cannot play on other partially-down or fully-down players.
-- Fully-down players can play on any partially-down players or fully-down players.
+- Players may lay down hand requirements as they get them, without waiting for the whole round's requirement. Down cards do not count toward end of round scoring.
+- Until you're fully down, every Group or Run you lay down is the bare minimum: exactly 3 cards in a Group, 4 in a Run. Extra copies (with Seeing Double) wait until you're fully down too.
+- The lay-down that completes your requirement makes you fully down and follows the normal rules, so it may be longer.
+- Partially-down players cannot play on the table at all, not even on their own partial downs, and cannot swap Jokers.
+- Fully-down players can play on any partially-down players or fully-down players. That's the gamble: your partial downs are safe from scoring, but they give everyone else somewhere to play.
+- You can't go out while partially down. Online, the game won't let you lay down a partial that leaves you fewer than 2 cards (one to discard, one to keep), or call Shanghai on your last card.
+
+Keeping partials to the minimum means you always hold enough cards to finish. Round 7's three Runs need all 12 cards you hold after drawing, so a single extra card in a partial Run would leave you unable to complete the last one.
 
 ### Seeing Double
 

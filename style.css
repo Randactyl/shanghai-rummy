@@ -365,6 +365,10 @@ table.scores { border-collapse: collapse; width: 100%; font-variant-numeric: tab
 .log li.shanghai { color: #ff9c8f; font-weight: 700; }
 .log li.big, .log li.down { font-weight: 700; }
 .log li.buy { color: #9cc0ff; }
+.glossary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 6px 0 4px; }
+.glossary dt { font-weight: 700; }
+.glossary dd { margin: 0; }
+@media (max-width: 420px) { .glossary { grid-template-columns: 1fr; gap: 0; } .glossary dd { margin-bottom: 8px; } }
 ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 
 /* ---------- toasts & flash */
@@ -396,6 +400,12 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 /* ---------- phones in portrait: a tighter single column */
 @media (max-width: 699px) and (orientation: portrait), (max-width: 699px) and (min-height: 561px) {
   .topbar { padding-top: 4px; padding-bottom: 2px; }
+  /* The requirement gets its own line so it's never cut off; the round number sits with the rule tags. */
+  .round { grid-template-columns: auto 1fr; grid-template-areas: 'no tags' 'req req'; align-items: center; column-gap: 6px; row-gap: 2px; }
+  .round-line { display: contents; }
+  .round-line .muted { grid-area: no; font-size: 0.8rem; white-space: nowrap; }
+  .round-line b { grid-area: req; line-height: 1.2; }
+  .rule-tags { grid-area: tags; }
   .strip { gap: 6px; padding: 2px 2px 6px; }
   .pchip { padding: 4px 8px; min-width: 96px; gap: 0; }
   .status { padding: 7px 10px; min-height: 36px; font-size: 0.92rem; }
@@ -429,6 +439,7 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
   .game > .statusbar { grid-area: bar; position: static; margin: 0 calc(-1 * var(--gutter)) 2px; padding: 4px 12px; }
   .topbar { grid-area: top; padding: 2px 0 0; }
   .round { grid-auto-flow: column; align-items: center; justify-content: start; gap: 8px; }
+  @media (max-width: 760px) { .btn.tb span { display: none; } }
   .g-main { grid-area: main; display: flex; flex-direction: column; gap: 6px; min-height: 0; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
   .g-side { grid-area: side; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
   .table { flex: 1 1 auto; min-height: 50px; overflow-y: auto; align-content: start; padding: 6px 8px; }
@@ -436,7 +447,10 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
   .planner-head { margin-bottom: 4px; }
   .slots { flex-wrap: nowrap; overflow-x: auto; }
   .slot { flex: none; min-height: calc(var(--mh) + 18px); }
-  .slot.filled { padding: 2px 4px 4px; }
+  .slot.filled { padding: 2px 4px; display: flex; align-items: center; gap: 2px; }
+  .slot.filled .staged-head { flex-direction: column; margin: 0; gap: 2px; }
+  .slot.filled .staged-head span { display: none; }
+  .slot.filled .staged-head .icon-btn { height: 22px; min-width: 22px; }
   .slot.empty { min-width: 80px; padding: 2px 8px; font-size: 0.7rem; }
   .slot.empty b { font-size: 0.82rem; }
   .planner-hint { margin-top: 2px; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -446,8 +460,12 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
   .hand { gap: 0; padding: 12px 0 2px; min-height: calc(var(--ch) + 14px); }
   .hand .card + .card { margin-left: calc(var(--cw) * -0.2); }
   .strip { flex-direction: column; overflow: visible; padding: 0; gap: 4px; }
-  .pchip { display: flex; align-items: center; gap: 8px; padding: 4px 8px; min-width: 0; }
-  .pc-top { flex: 1; min-width: 0; }
+  .pchip { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 0; padding: 4px 8px; min-width: 0; }
+  /* Keep room for the name; when tags crowd it, the stats wrap onto a second line instead. */
+  .pc-top { flex: 1 1 8em; min-width: 0; }
+  .pc-meta { margin-left: auto; }
+  .owner { display: flex; align-items: center; gap: 8px; }
+  .owner-name { margin: 0; flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pc-name { max-width: none; }
   .status { margin: 0; min-height: 0; padding: 6px 10px; font-size: 0.88rem; }
   .ticker { display: none; }

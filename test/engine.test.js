@@ -64,6 +64,7 @@ test('lay down counts', () => {
   assert.equal(checkLayDownCounts([g, g, g], z, ROUNDS[0], M({ seeingDouble: true })), null);
   assert.ok(checkLayDownCounts([g, g, r], z, ROUNDS[0], M({ seeingDouble: true })), 'no runs in round 1');
   assert.equal(checkLayDownCounts([g], z, ROUNDS[0], M({ gambit: true })), null);
+  assert.match(checkLayDownCounts([{ type: 'group', cards: [1, 2, 3, 4] }], z, ROUNDS[0], M({ gambit: true })), /exactly 3/, 'partials are bare');
   assert.ok(checkLayDownCounts([g, { type: 'group', cards: [1, 2, 3, 4] }], z, ROUNDS[0], M({ restrictive: true })));
 });
 
@@ -215,20 +216,58 @@ test('round 7: going out by laying everything down without a discard', () => {
   assert.equal(s.phase, 'gameEnd');
 });
 
-test('gambit: partial down can only play on own melds', () => {
+test('gambit: partly-down players lay down the bare requirement and stay off the table', () => {
   let { s, rng } = setup(2, { gambit: true });
   s.round = 1; // one run, one group
   const a = s.players[s.current].id;
   const b = s.players[(s.current + 1) % 2].id;
   s.melds.push({ id: 'mb', owner: b, type: 'group', rank: 12, cards: ['H12.1', 'S12.1', 'C12.1'] });
   s.down[b] = { groups: 1, runs: 1 };
-  s.hands[a].push('H8.1', 'S8.1', 'D8.1', 'C8.1', 'D12.1');
+  s.hands[a].push('H8.1', 'S8.1', 'D8.1', 'C8.1', 'D12.1', 'S3.1', 'S4.1', 'S5.1', 'S6.1', 'S7.1');
   s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  assert.throws(() => apply(s, a, { type: 'layDown', melds: [{ type: 'group', cards: ['H8.1', 'S8.1', 'D8.1', 'C8.1'] }] }), /exactly 3/);
   s = apply(s, a, { type: 'layDown', melds: [{ type: 'group', cards: ['H8.1', 'S8.1', 'D8.1'] }] }, { rng });
   assert.deepEqual(s.down[a], { groups: 1, runs: 0 });
+  const own = s.melds.at(-1).id;
   assert.throws(() => apply(s, a, { type: 'layDown', melds: [{ type: 'group', cards: ['H8.1', 'S8.1', 'D8.1'] }] }), RuleError);
-  s = apply(s, a, { type: 'layOff', meldId: s.melds.at(-1).id, cardId: 'C8.1' }, { rng });
-  assert.throws(() => apply(s, a, { type: 'layOff', meldId: 'mb', cardId: 'D12.1' }), /own/);
+  assert.throws(() => apply(s, a, { type: 'layOff', meldId: own, cardId: 'C8.1' }), /Finish going down/, 'not even on your own meld');
+  assert.throws(() => apply(s, a, { type: 'layOff', meldId: 'mb', cardId: 'D12.1' }), /Finish going down/);
+  // The lay-down that finishes the requirement follows the normal rules, so it can be long.
+  s = apply(s, a, { type: 'layDown', melds: [{ type: 'run', cards: ['S3.1', 'S4.1', 'S5.1', 'S6.1', 'S7.1'] }] }, { rng });
+  assert.deepEqual(s.down[a], { groups: 1, runs: 1 });
+  s = apply(s, a, { type: 'layOff', meldId: own, cardId: 'C8.1' }, { rng });
+  s = apply(s, a, { type: 'layOff', meldId: 'mb', cardId: 'D12.1' }, { rng });
+});
+
+test('gambit: extra copies wait until you are fully down', () => {
+  const g = { type: 'group', cards: [1, 2, 3] };
+  const z = { groups: 0, runs: 0 };
+  const sd = M({ gambit: true, seeingDouble: true });
+  assert.match(checkLayDownCounts([g, g, g], z, ROUNDS[3], sd), /fully down/, 'three Groups, no Run yet');
+  assert.equal(checkLayDownCounts([g, g], z, ROUNDS[3], sd), null);
+  assert.equal(checkLayDownCounts([g, g, g], z, ROUNDS[0], sd), null, 'fully down, so the extra is fine');
+});
+
+test("gambit: you can't go out until you're fully down", () => {
+  let { s, rng } = setup(2, { gambit: true });
+  s.round = 1; // one run, one group
+  const a = s.players[s.current].id;
+  const b = s.players[(s.current + 1) % 2].id;
+  // Laying down your last cards as a partial would be going out.
+  s.hands[a] = ['H8.1', 'S8.1', 'D8.1'];
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  assert.throws(() => apply(s, a, { type: 'layDown', melds: [{ type: 'group', cards: ['H8.1', 'S8.1', 'D8.1'] }] }), /fully down/);
+  // So would handing over your last card for an Offensive Shanghai.
+  s.melds.push({ id: 'm9', owner: a, type: 'group', rank: 9, cards: ['H9.0', 'S9.0', 'D9.0'] });
+  s.down[a] = { groups: 1, runs: 1 };
+  s.hands[a].push('C9.1');
+  s.hands[b] = ['C2.0'];
+  s.down[b] = { groups: 1, runs: 0 };
+  s = apply(s, a, { type: 'discard', cardId: 'C9.1' }, { rng });
+  assert.throws(() => apply(s, b, { type: 'shanghai', meldId: 'm9' }), /fully down/);
+  s.hands[b].push('C3.0');
+  s = apply(s, b, { type: 'shanghai', meldId: 'm9' }, { rng });
+  assert.equal(s.shanghaiPick.caller, b);
 });
 
 test('drop: current player mid-turn — hand goes to deck, turn passes, seats stay aligned', () => {

@@ -3,7 +3,7 @@
 
 import { buildDeck, shuffle, points, dealDrawValue, label, isJoker, defaultRng } from './cards.js';
 import {
-  ROUNDS, analyzeMeld, layOffOptions, withCardAdded, checkLayDownCounts, isFullyDown, mayPlayOn, describeMeld,
+  ROUNDS, analyzeMeld, layOffOptions, withCardAdded, checkLayDownCounts, isFullyDown, describeMeld,
   couldStartMeld,
 } from './rules.js';
 
@@ -351,6 +351,8 @@ export function apply(prev, pid, action, ctx = {}) {
       if (!shanghaiWindowOpen(state)) fail('Too late to Shanghai that card');
       const ld = state.lastDiscard;
       if (ld.by === me) fail("You can't Shanghai your own discard");
+      // Calling hands a card over, so with one card left that would be going out.
+      if (state.hands[me].length <= 1 && !isFullyDown(state.down[me], reqOf(state))) fail("You can't go out until you're fully down");
       const meld = findMeld(state, action.meldId);
       placeOnMeld(state, meld, ld.id, action.end);
       markPlayed(state, [ld.id]);
@@ -391,16 +393,19 @@ export function apply(prev, pid, action, ctx = {}) {
       }
       const err = checkLayDownCounts(melds, existing, req, mods);
       if (err) fail(err);
+      const afterCounts = {
+        groups: existing.groups + melds.filter((m) => m.type === 'group').length,
+        runs: existing.runs + melds.filter((m) => m.type === 'run').length,
+      };
+      // Not fully down yet: keep a card to discard and one to hold, so this can't turn into going out.
+      if (!isFullyDown(afterCounts, req) && hand.length - used.size < 2) fail("You can't go out until you're fully down");
       for (const m of melds) {
         state.meldSeq += 1;
         state.melds.push({ ...m, id: `m${state.meldSeq}`, owner: me });
         for (const c of m.cards) removeFromHand(state, me, c);
         markPlayed(state, m.cards);
       }
-      const counts = {
-        groups: existing.groups + melds.filter((m) => m.type === 'group').length,
-        runs: existing.runs + melds.filter((m) => m.type === 'run').length,
-      };
+      const counts = afterCounts;
       state.down[me] = counts;
       const full = isFullyDown(counts, req);
       log(state, `${nameOf(state, me)} ${full ? 'is down' : 'laid down'}: ${melds.map((m) => describeMeld(m, mods)).join(', ')}.`, full ? 'down' : 'info');
@@ -410,8 +415,8 @@ export function apply(prev, pid, action, ctx = {}) {
 
     case 'layOff': {
       const meld = findMeld(state, action.meldId);
-      if (!mayPlayOn(me, meld, state.down, req, mods)) {
-        fail(state.down[me] ? 'Partially-down players can only add to their own cards' : 'You must be down to play on the table');
+      if (!isFullyDown(state.down[me], req)) {
+        fail(state.down[me] ? 'Finish going down before you play on the table' : 'You must be down to play on the table');
       }
       if (!state.hands[me].includes(action.cardId)) fail('That card is not in your hand');
       placeOnMeld(state, meld, action.cardId, action.end);
@@ -437,7 +442,6 @@ export function apply(prev, pid, action, ctx = {}) {
       updatedSrc.cards[swap.index] = card;
       state.melds[state.melds.indexOf(src)] = updatedSrc;
       const tgt = findMeld(state, tgtId);
-      if (!mayPlayOn(me, tgt, state.down, req, mods)) fail("You can't play the Joker there");
       placeOnMeld(state, tgt, jokerId, action.target.end);
       removeFromHand(state, me, card);
       markPlayed(state, [card, jokerId]);

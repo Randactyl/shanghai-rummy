@@ -1,5 +1,5 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
-import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, mayPlayOn, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
+import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
 import { HostSession } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
@@ -441,7 +441,7 @@ const MOD_INFO = [
   ['shanghai', 'The Shanghai', 'Call Shanghai defensively on your discard, or steal a playable discard onto the table.'],
   ['twoWays', 'Two Ways', 'Aces are both high and low (K → A → 2 → 3).'],
   ['crazy', 'Crazy Cards', 'Groups are any cards of one suit; Runs are sequences regardless of suit.'],
-  ['gambit', 'The Gambit', 'Lay down requirements as you get them. Partially-down players may only add to their own cards.'],
+  ['gambit', 'The Gambit', "Lay down each required Group or Run as soon as you have it (exactly 3 or 4 cards). You can't play on the table until you're fully down."],
   ['seeingDouble', 'Seeing Double', 'Lay down extra Groups/Runs of the kinds the round requires, when going down or on later turns.'],
   ['restrictive', 'Restrictive Requirements', 'Lay down exactly 3 cards per Group and 4 per Run.'],
 ];
@@ -638,22 +638,26 @@ function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
     const missing = plan.need[type] - ui.staged.filter((s) => s.type === type).length;
     for (let k = 0; k < missing; k++) {
       const can = k === 0 && !!selCheck[type];
+      const sub = can ? `Tap to add these ${ui.selected.size}` : k === 0 ? SLOT_HINT(type, mods) : '';
       slots.push(`<div class="slot empty ${can ? 'can' : ''}" ${can ? `data-act="stage" data-type="${type}" role="button" tabindex="0"` : ''}>
-        <b>${type === 'group' ? 'Group' : 'Run'}</b><span>${can ? `Tap to add these ${ui.selected.size}` : SLOT_HINT(type, mods)}</span>
+        <b>${type === 'group' ? 'Group' : 'Run'}</b>${sub ? `<span>${sub}</span>` : ''}
       </div>`);
     }
   }
   const sel = ui.selected.size;
+  const completes = ['group', 'run'].every((t) => ui.staged.filter((s) => s.type === t).length >= plan.need[t]);
   let hint;
   const fit = selCheck.group && plan.wants('group') ? 'Group' : selCheck.run && plan.wants('run') ? 'Run' : null;
   if (sel && fit) hint = `That's a ${fit}! Tap <b>Make ${fit}</b> to set it aside here.`;
   else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
   else if (sel) hint = esc(selCheck.why);
+  else if (plan.ready && !plan.fully && !completes) hint = canPlayStep ? 'The Gambit: lay these down now, or keep going.' : 'The Gambit: lay these down on your turn, or keep going.';
   else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
-  else if (!ui.staged.length && !plan.have) hint = `Tap cards in your hand to select them. ${g.req.groups ? 'A <b>Group</b> is ' + SLOT_HINT('group', mods) + '.' : ''} ${g.req.runs ? 'A <b>Run</b> is ' + SLOT_HINT('run', mods) + '.' : ''}`;
+  else if (ui.staged.length && plan.problem && mods.gambit) hint = esc(plan.problem);
+  else if (!ui.staged.length && !plan.have) hint = 'Tap cards in your hand to select them.';
   else if (plan.fully && mods.seeingDouble) hint = 'Seeing Double: you can lay down extra Groups/Runs.';
-  else hint = mods.gambit && ui.staged.length ? 'The Gambit: you can lay these down now, or keep going.' : 'Keep going — select the next set.';
-  const title = plan.fully ? 'Extra melds' : plan.have ? `Finish going down · ${esc(g.req.label)}` : `Going down · ${esc(g.req.label)}`;
+  else hint = 'Keep going — select the next set.';
+  const title = plan.fully ? 'Extra melds' : plan.have ? 'Finish going down' : 'Going down';
   return `<section class="planner ${plan.ready ? 'ready' : ''}">
     <div class="planner-head"><b>${title}</b>${!myTurn ? '<span class="muted small">planning</span>' : ''}</div>
     ${slots.length ? `<div class="slots">${slots.join('')}</div>` : ''}
@@ -716,8 +720,8 @@ function gameHTML(v) {
     } else if (myTurn) {
       statusCls = 'mine';
       if (one && targets.size) status = 'Tap a glowing meld on the table to play it — or discard it';
-      else if (!myDown) status = plan.ready ? 'Ready to go down — tap Lay down' : `Build ${esc(g.req.label)} to go down, or discard to end your turn`;
-      else if (plan.active && !plan.fully) status = 'Keep laying down, play on your own cards, or discard';
+      else if (!myDown) status = 'Go down, or discard to end your turn';
+      else if (plan.active && !plan.fully) status = 'Keep laying down, or discard to end your turn';
       else status = 'Select a card to play it on the table, or discard to end your turn';
     } else {
       status = `${esc(cur.name)}'s turn${g.turnStep === 'draw' ? '' : ' · drew a card'}`;
@@ -745,7 +749,7 @@ function gameHTML(v) {
           }).join('')}
         </div>
       </div>`).join('')
-    : `<div class="empty-table muted">No cards on the table yet.<br><span class="small">This round: <b>${esc(g.req.label)}</b></span></div>`;
+    : `<div class="empty-table muted">No cards on the table yet.</div>`;
 
   // ---- piles
   const canDraw = myTurn && g.turnStep === 'draw' && !g.shanghaiPick;
@@ -871,7 +875,7 @@ function computeTargets(v) {
     const jokerId = src?.cards.find(isJoker);
     if (!jokerId) return out;
     for (const m of g.melds) {
-      if (m.id === src.id || !mayPlayOn(me, m, g.down, g.req, mods)) continue;
+      if (m.id === src.id) continue;
       for (const o of layOffOptions(m, jokerId, mods)) {
         if (o.kind === 'add') add(m, { label: m.type === 'group' ? 'Put the Joker here' : `Put the Joker on the ${o.end} end`, action: { type: 'swapJoker', meldId: src.id, cardId: ui.mode.cardId, target: { meldId: m.id, end: o.end } } });
       }
@@ -880,12 +884,11 @@ function computeTargets(v) {
   }
   if (ui.selected.size !== 1) return out;
   const card = [...ui.selected][0];
-  const fully = isFullyDown(g.down[me], g.req);
+  if (!isFullyDown(g.down[me], g.req)) return out;
   for (const m of g.melds) {
-    if (!mayPlayOn(me, m, g.down, g.req, mods)) continue;
     for (const o of layOffOptions(m, card, mods)) {
       if (o.kind === 'add') add(m, { label: endLabel(m, o, card), action: { type: 'layOff', meldId: m.id, cardId: card, end: o.end } });
-      else if (fully && mods.wild) add(m, { label: `Swap the ${label(card)} for the Joker`, mode: { kind: 'jokerTarget', cardId: card, meldId: m.id } });
+      else if (mods.wild) add(m, { label: `Swap the ${label(card)} for the Joker`, mode: { kind: 'jokerTarget', cardId: card, meldId: m.id } });
     }
   }
   return out;
@@ -1097,6 +1100,25 @@ const RULES_HTML = `
   <p class="muted small">Stalemate: if everyone is down and no card left in the game can be played on the table, nobody can go out. The round ends and everyone scores their hand.</p>
   <p class="muted small">On the table, cards with a gold outline were played since your last turn.</p>`;
 
+/** Words the game uses, defined once. Mirrors the glossary in RULES.md. */
+const GLOSSARY = [
+  ['Meld', 'A Group or a Run, once it\'s on the table.'],
+  ['Group', '3+ cards of the same value (with Crazy Cards: of the same suit).'],
+  ['Run', '4+ cards of one suit in sequence, Aces high (with Crazy Cards: any suits).'],
+  ['Round requirement', 'The Groups and/or Runs this round asks for, shown at the top of the screen.'],
+  ['Go down', 'Lay the round requirement face up on the table. You\'re then <i>down</i>.'],
+  ['Part down', 'With The Gambit: you\'ve laid down some of the requirement, but not all of it.'],
+  ['Play on the table', 'Add a card from your hand to any meld. Only players who are down can.'],
+  ['Go out', 'Get rid of your last card. It ends the round, and you score zero for it.'],
+  ['Joker', 'Wild: stands in for any card, one per meld.'],
+  ['Swap', 'Replace a Joker on the table with the real card, then move the Joker to another meld.'],
+  ['Buy', 'Take the top discard when it isn\'t your turn, plus 2 penalty cards from the deck.'],
+  ['Shanghai', 'Calling out a discard that could have been played on the table.'],
+  ['Stalemate', 'Everyone is down and no card left can be played, so the round ends.'],
+];
+const GLOSSARY_HTML = `<details class="fold"><summary>Glossary</summary>
+  <dl class="glossary">${GLOSSARY.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl></details>`;
+
 /** The rules for the game in progress: this round, the table, and which modifiers are on. */
 function gameRulesModal(g) {
   const mods = g.settings.mods;
@@ -1110,7 +1132,8 @@ function gameRulesModal(g) {
       <h3>Modifiers in play</h3>
       <div class="mods">${on.length ? on.map(([k, name, desc]) => `<div class="mod on static"><span><b>${name}</b><span class="muted small">${desc}</span></span></div>`).join('') : '<p class="muted">None — classic rules.</p>'}</div>
       ${off.length ? `<p class="muted small">Not in play: ${off.map(([, name]) => name).join(', ')}.</p>` : ''}
-      <details class="fold"><summary>How to play</summary>${RULES_HTML}</details>`,
+      <details class="fold"><summary>How to play</summary>${RULES_HTML}</details>
+      ${GLOSSARY_HTML}`,
   };
 }
 
@@ -1200,7 +1223,7 @@ const handlers = {
     sset('shrum.host', null);
     leave();
   },
-  rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
+  rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML + GLOSSARY_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
   'game-rules'() { ui.modal = gameRulesModal(app.view.game); renderModal(); },
   'card-style'() { ui.modal = cardStyleModal(); renderModal(); },
   'set-back'(el) { prefs.back = el.dataset.back; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); },
