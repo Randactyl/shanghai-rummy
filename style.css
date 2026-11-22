@@ -107,7 +107,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .statusbar.lost .btn { background: #fff; color: #6b2a1f; }
 .tag { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.15); vertical-align: middle; }
 .tag.you { background: var(--gold); color: var(--gold-ink); }
-.tag.down { background: #2f9e6b; color: #fff; }
+.tag.down, .tag.ok { background: #2f9e6b; color: #fff; }
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
 .dot.on { background: #5ee08e; box-shadow: 0 0 6px #5ee08e; }
 .dot.off { background: #777; }

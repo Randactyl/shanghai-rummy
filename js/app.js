@@ -558,12 +558,14 @@ function gameHTML(v) {
   const handIds = ui.order.filter((id) => !staged.has(id));
   const targets = computeTargets(v);
   const myDown = g.down?.[me];
+  const compose = g.phase === 'compose';
+  const ready = new Set(g.ready || []);
 
   // ---- players strip
   const strip = g.players.map((p, i) => {
     const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Partly down') : '';
     return `<div class="pchip ${i === g.current && g.phase === 'turn' ? 'turn' : ''} ${p.id === me ? 'me' : ''}">
-      <div class="pc-top"><span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span><span class="pc-name">${esc(p.name)}</span>${i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}</div>
+      <div class="pc-top"><span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span><span class="pc-name">${esc(p.name)}</span>${i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}${compose && ready.has(p.id) ? '<span class="tag ok" title="Ready">✓</span>' : ''}</div>
       <div class="pc-meta"><span title="Cards in hand">🂠 ${p.handCount}</span>${down ? `<span class="tag down">${down}</span>` : ''}<span class="muted" title="Total score">${p.total}</span></div>
     </div>`;
   }).join('');
@@ -571,8 +573,8 @@ function gameHTML(v) {
   // ---- status
   let status = '';
   let statusCls = '';
-  if (g.phase === 'compose') {
-    status = `Arrange your hand — first card flips in <b data-until="${g.composeUntil}">…</b>`;
+  if (compose) {
+    status = `Arrange your hand — first card flips in <b data-until="${g.composeUntil}">…</b> <span class="muted">· ${ready.size}/${g.players.length} ready</span>`;
   } else if (g.phase === 'turn') {
     if (g.shanghaiPick) {
       const sp = g.shanghaiPick;
@@ -663,6 +665,11 @@ function gameHTML(v) {
   const one = sel.length === 1 ? sel[0] : null;
   const canStage = canPlayStep && (!myDown || mods.seeingDouble || (mods.gambit && !isFullyDown(myDown, g.req)));
   const actions = [];
+  if (compose) {
+    const iam = ready.has(me);
+    actions.push(`<button class="btn ${iam ? 'ghost' : 'primary'}" data-act="ready" data-ready="${iam ? 0 : 1}">${iam ? '✓ Ready (undo)' : "I'm ready"}</button>`);
+    if (app.role === 'host') actions.push(`<button class="btn" data-act="flip-now" title="Skip the rest of the countdown">Flip now</button>`);
+  }
   if (canPlayStep) {
     if (canStage && sel.length >= 3 && g.req.groups > 0) actions.push(`<button class="btn" data-act="stage" data-type="group">Make Group</button>`);
     if (canStage && sel.length >= 4 && g.req.runs > 0) actions.push(`<button class="btn" data-act="stage" data-type="run">Make Run</button>`);
@@ -948,6 +955,8 @@ const handlers = {
   rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
   'card-style'() { ui.modal = cardStyleModal(); renderModal(); },
   'set-back'(el) { prefs.back = el.dataset.back; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); },
+  ready(el) { act({ type: 'ready', ready: el.dataset.ready === '1' }); },
+  'flip-now'() { act({ type: 'flip' }); },
   'close-modal'() { ui.modal = null; renderModal(); },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('Invite link copied'); }

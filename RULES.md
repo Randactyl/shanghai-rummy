@@ -168,6 +168,10 @@ The first player of the round collects all cards. They are now the Dealer of the
 
 These only apply when playing in the web app.
 
+### Arranging Your Hand
+
+The "x seconds to compose their hands" countdown ends early once every player taps *I'm ready*. The host can also flip the first card at any time.
+
 ### Removing a Player
 
 The host can remove a player who has disconnected (or anyone else) during a game.
