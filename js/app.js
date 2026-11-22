@@ -549,6 +549,16 @@ function recoveringHTML(v) {
 
 const cutOff = () => app.role === 'client' && !!app.lostSince;
 
+const BASE_MODS = ['wild', 'shanghai'];
+
+/** Short tags for rules that differ from the usual game, shown under the round name. */
+function ruleTags(mods) {
+  const tags = MOD_INFO.filter(([k]) => !BASE_MODS.includes(k) && mods[k]).map(([, name]) => name);
+  if (!mods.wild) tags.push('No Jokers');
+  if (!mods.shanghai) tags.push('No Shanghai');
+  return tags;
+}
+
 /** What this player can still lay down, and how the staged melds fill it. */
 function downPlan(g, me) {
   const mods = g.settings.mods;
@@ -759,13 +769,18 @@ function gameHTML(v) {
   }
   if (sel.length) actions.push(`<button class="btn ghost" data-act="deselect">Clear</button>`);
 
+  const tags = ruleTags(mods);
   const sortBtn = (by, text) => `<button class="seg-btn ${ui.sortBy === by ? 'on' : ''}" data-act="sort" data-by="${by}" aria-pressed="${ui.sortBy === by}">${text}</button>`;
   return `
   <main class="game ${cutOff() ? 'frozen' : ''}">
     ${statusBar()}
     <header class="topbar">
-      <div class="round"><span class="muted">Round ${g.round + 1}/7</span> <b>${esc(g.req.label)}</b></div>
+      <button class="round" data-act="game-rules" title="Rules for this game">
+        <span class="round-line"><span class="muted">Round ${g.round + 1}/7</span> <b>${esc(g.req.label)}</b></span>
+        ${tags.length ? `<span class="rule-tags">${tags.map((t) => `<span class="tag rule">${esc(t)}</span>`).join('')}</span>` : ''}
+      </button>
       <div class="top-actions">
+        <button class="btn small ghost tb" data-act="game-rules" aria-label="Rules" title="Rules">${icon.rules}<span>Rules</span></button>
         <button class="btn small ghost tb" data-act="scores" aria-label="Scores" title="Scores">${icon.scores}<span>Scores</span></button>
         <button class="btn small ghost tb" data-act="log" aria-label="Game log" title="Game log">${icon.log}<span>Log</span></button>
         <button class="btn small ghost tb" data-act="menu" aria-label="Menu" title="Menu">${icon.menu}</button>
@@ -953,6 +968,23 @@ const RULES_HTML = `
   <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>
   <p class="muted small">On the table, cards with a gold outline were played since your last turn.</p>`;
 
+/** The rules for the game in progress: this round, the table, and which modifiers are on. */
+function gameRulesModal(g) {
+  const mods = g.settings.mods;
+  const on = MOD_INFO.filter(([k]) => mods[k]);
+  const off = MOD_INFO.filter(([k]) => !mods[k]);
+  return {
+    title: 'Rules for this game',
+    cls: 'wide',
+    body: `<div class="rule-now"><span class="muted small">Round ${g.round + 1} of 7</span><b>${esc(g.req.label)}</b></div>
+      <p class="muted small center">${g.settings.decks} deck${g.settings.decks === 1 ? '' : 's'} · ${mods.wild ? 'Jokers wild' : 'no Jokers'} · ${g.settings.composeSeconds}s to arrange your hand</p>
+      <h3>Modifiers in play</h3>
+      <div class="mods">${on.length ? on.map(([k, name, desc]) => `<div class="mod on static"><span><b>${name}</b><span class="muted small">${desc}</span></span></div>`).join('') : '<p class="muted">None — classic rules.</p>'}</div>
+      ${off.length ? `<p class="muted small">Not in play: ${off.map(([, name]) => name).join(', ')}.</p>` : ''}
+      <details class="fold"><summary>How to play</summary>${RULES_HTML}</details>`,
+  };
+}
+
 function cardStyleModal() {
   const sample = ['H14.0', 'S13.0', 'D12.0', 'C11.0'];
   return {
@@ -1040,6 +1072,7 @@ const handlers = {
     leave();
   },
   rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
+  'game-rules'() { ui.modal = gameRulesModal(app.view.game); renderModal(); },
   'card-style'() { ui.modal = cardStyleModal(); renderModal(); },
   'set-back'(el) { prefs.back = el.dataset.back; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); },
   ready(el) { act({ type: 'ready', ready: el.dataset.ready === '1' }); },
@@ -1071,7 +1104,7 @@ const handlers = {
     ui.modal = {
       title: 'Menu',
       body: `<div class="menu">
-        <button class="btn wide" data-act="rules">How to play</button>
+        <button class="btn wide" data-act="game-rules">${icon.rules} Rules for this game</button>
         <button class="btn wide" data-act="card-style">${icon.palette} Card style</button>
         <div class="row">
           <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>

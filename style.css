@@ -108,6 +108,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .tag { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.15); vertical-align: middle; }
 .tag.you { background: var(--gold); color: var(--gold-ink); }
 .tag.down, .tag.ok { background: #2f9e6b; color: #fff; }
+.tag.rule { background: rgba(242, 193, 78, 0.18); color: var(--gold); font-weight: 600; }
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
 .dot.on { background: #5ee08e; box-shadow: 0 0 6px #5ee08e; }
 .dot.off { background: #777; }
@@ -177,8 +178,11 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 
 /* ---------- game layout */
 .game { max-width: 1000px; margin: 0 auto; padding: 0 var(--gutter) 110px; }
-.topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0 6px; }
-.round { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0 4px; }
+.round { background: none; border: 0; padding: 4px 6px; margin-left: -6px; border-radius: 8px; text-align: left; cursor: pointer; min-width: 0; display: grid; gap: 3px; }
+.round:hover { background: rgba(255, 255, 255, 0.06); }
+.round-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule-tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .top-actions { display: flex; gap: 2px; flex: none; }
 .btn.tb { padding: 4px 8px; min-width: 36px; }
 .btn.tb span { display: none; }
@@ -288,6 +292,11 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .standings li::before { content: counter(s) '.'; width: 1.6em; color: var(--ink-dim); }
 .standings li span { flex: 1; }
 .standings li.win { background: rgba(242, 193, 78, 0.18); font-weight: 700; }
+.fold { margin-top: 10px; border-top: 1px solid var(--panel-line); padding-top: 6px; }
+.fold summary { cursor: pointer; font-weight: 700; padding: 6px 0; color: var(--gold); }
+.rule-now { display: grid; justify-items: center; gap: 2px; padding: 10px; border-radius: 12px; background: rgba(242, 193, 78, 0.1); border: 1px solid rgba(242, 193, 78, 0.4); }
+.rule-now b { font: 700 1.3rem Georgia, serif; }
+.mod.static { cursor: default; }
 ol.steps { padding-left: 1.4em; margin: 4px 0 12px; display: grid; gap: 4px; }
 .backs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .back-opt { background: transparent; border: 2px solid transparent; border-radius: 12px; padding: 8px 4px; display: grid; justify-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; }
