@@ -202,10 +202,10 @@ export function checkLayDownCounts(melds, existing, req, mods) {
   if (partial) {
     // The Gambit: until a lay-down completes the round, it's the bare requirement — no extra copies,
     // no extra cards — so you always keep enough cards to finish.
-    if (g > req.groups || r > req.runs) return 'The Gambit: lay down extra Groups/Runs once you are fully down';
+    if (g > req.groups || r > req.runs) return "The Gambit: extra Groups/Runs wait until you're fully down";
     for (const m of melds) {
       const min = m.type === 'group' ? MIN_GROUP : MIN_RUN;
-      if (m.cards.length !== min) return `The Gambit: until you finish going down, a ${m.type === 'group' ? 'Group' : 'Run'} is exactly ${min} cards`;
+      if (m.cards.length !== min) return `The Gambit: until you're fully down, a ${m.type === 'group' ? 'Group' : 'Run'} is exactly ${min} cards`;
     }
   }
   if (mods.restrictive) {

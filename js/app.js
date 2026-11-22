@@ -651,7 +651,7 @@ function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
   if (sel && fit) hint = `That's a ${fit}! Tap <b>Make ${fit}</b> to set it aside here.`;
   else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
   else if (sel) hint = esc(selCheck.why);
-  else if (plan.ready && !plan.fully && !completes) hint = canPlayStep ? 'The Gambit: lay these down now, or keep going.' : 'The Gambit: you can lay these down on your turn, or keep going.';
+  else if (plan.ready && !plan.fully && !completes) hint = canPlayStep ? 'The Gambit: lay these down now, or keep going.' : 'The Gambit: lay these down on your turn, or keep going.';
   else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
   else if (ui.staged.length && plan.problem && mods.gambit) hint = esc(plan.problem);
   else if (!ui.staged.length && !plan.have) hint = 'Tap cards in your hand to select them.';
