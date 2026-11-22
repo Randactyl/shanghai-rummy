@@ -148,10 +148,14 @@ The first player of the round collects all cards. They are now the Dealer of the
 
 > *"Are you feeling lucky?"*
 
-- Players may lay down hand requirements as they have them. Down cards do not count toward end of round scoring.
-- Partially-down players can add to their own partial downs.
-- Partially-down players cannot play on other partially-down or fully-down players.
-- Fully-down players can play on any partially-down players or fully-down players.
+- Players may lay down hand requirements as they get them, without waiting for the whole round's requirement. Down cards do not count toward end of round scoring.
+- Until you're fully down, every Group or Run you lay down is the bare minimum: exactly 3 cards in a Group, 4 in a Run. Extra copies (with Seeing Double) wait until you're fully down too.
+- The lay-down that completes your requirement makes you fully down and follows the normal rules, so it may be longer.
+- Partially-down players cannot play on the table at all, not even on their own partial downs, and cannot swap Jokers.
+- Fully-down players can play on any partially-down players or fully-down players. That's the gamble: your partial downs are safe from scoring, but they give everyone else somewhere to play.
+- You can't go out while partially down. Online, the game won't let you lay down a partial that leaves you fewer than 2 cards (one to discard, one to keep), or call Shanghai on your last card.
+
+Keeping partials to the minimum means you always hold enough cards to finish. Round 7's three Runs need all 12 cards you hold after drawing, so a single extra card in a partial Run would leave you unable to complete the last one.
 
 ### Seeing Double
 
