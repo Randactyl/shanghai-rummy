@@ -645,13 +645,14 @@ function gameHTML(v) {
   const selCheck = plan.active ? selectionCheck(g, sel) : {};
   const compose = g.phase === 'compose';
   const ready = new Set(g.ready || []);
+  const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : null;
 
-  // ---- players strip
+  // ---- players
   const strip = g.players.map((p, i) => {
-    const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Partly down') : '';
+    const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Part down') : '';
     return `<div class="pchip ${i === g.current && g.phase === 'turn' ? 'turn' : ''} ${p.id === me ? 'me' : ''}">
       <div class="pc-top"><span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span><span class="pc-name">${esc(p.name)}</span>${i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}${compose && ready.has(p.id) ? '<span class="tag ok" title="Ready">✓</span>' : ''}</div>
-      <div class="pc-meta"><span title="Cards in hand">🂠 ${p.handCount}</span>${down ? `<span class="tag down">${down}</span>` : ''}<span class="muted" title="Total score">${p.total}</span></div>
+      <div class="pc-meta"><span class="pc-cards" title="Cards in hand">${icon.hand}${p.handCount}</span>${down ? `<span class="tag down">${down}</span>` : ''}<b class="pc-score ${p.total === low ? 'lead' : ''}" title="Total score${p.total === low ? ' — lowest so far' : ''}">${p.total}</b></div>
     </div>`;
   }).join('');
 
