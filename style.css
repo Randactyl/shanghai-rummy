@@ -76,9 +76,11 @@ h3 { font-size: 1rem; margin-top: 16px; }
   background: var(--danger); color: #fff; border-color: transparent; font-size: 1.1rem; letter-spacing: 0.04em;
   animation: pulse 1s infinite;
 }
+.btn.square { padding: 0; width: 42px; flex: none; }
 .icon-btn {
   border: 1px solid var(--panel-line); background: rgba(255, 255, 255, 0.06); border-radius: 8px;
   min-width: 34px; height: 34px; cursor: pointer; padding: 0 8px;
+  display: inline-grid; place-items: center;
 }
 .icon-btn:disabled { opacity: 0.3; cursor: default; }
 .link { background: none; border: 0; color: var(--gold); text-decoration: underline; cursor: pointer; padding: 0; }
@@ -172,6 +174,9 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0 6px; }
 .round { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-actions { display: flex; gap: 2px; flex: none; }
+.btn.tb { padding: 4px 8px; min-width: 36px; }
+.btn.tb span { display: none; }
+@media (min-width: 640px) { .btn.tb span { display: inline; } }
 .strip { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
 .pchip { flex: none; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px; padding: 6px 10px; min-width: 96px; }
 .pchip.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 14px rgba(242, 193, 78, 0.3); }

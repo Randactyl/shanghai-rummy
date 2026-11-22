@@ -295,8 +295,17 @@ function cardHTML(id, { cls = '', attrs = '' } = {}) {
 }
 const backHTML = (cls = '', attrs = '') => `<div class="card back ${cls}" ${attrs}></div>`;
 
+const svg = (d, size = 18) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const icon = {
-  copy: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+  copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 16),
+  share: svg('<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>'),
+  close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+  rules: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 7h6M9 11h6"/>'),
+  scores: svg('<path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
+  log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  menu: svg('<circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/>'),
+  palette: svg('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4.1-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10" cy="7" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/>'),
+  hand: svg('<rect x="3" y="5" width="11" height="15" rx="2"/><path d="M17 6.5 20 7.6a1.5 1.5 0 0 1 .9 1.9L17.5 19"/>', 14),
 };
 
 function playerName(v, pid) {
@@ -418,7 +427,7 @@ function lobbyHTML(v) {
       </div>
       <div class="share">
         <button class="btn" data-act="copy" data-text="${esc(link)}">${icon.copy} Copy invite link</button>
-        ${navigator.share ? `<button class="btn ghost" data-act="share" data-text="${esc(link)}">Share…</button>` : ''}
+        ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(link)}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
       </div>
     </header>
 
@@ -660,9 +669,9 @@ function gameHTML(v) {
     <header class="topbar">
       <div class="round"><span class="muted">Round ${g.round + 1}/7</span> <b>${esc(g.req.label)}</b></div>
       <div class="top-actions">
-        <button class="btn small ghost" data-act="scores">Scores</button>
-        <button class="btn small ghost" data-act="log">Log</button>
-        <button class="btn small ghost" data-act="menu" aria-label="Menu">⋯</button>
+        <button class="btn small ghost tb" data-act="scores" aria-label="Scores" title="Scores">${icon.scores}<span>Scores</span></button>
+        <button class="btn small ghost tb" data-act="log" aria-label="Game log" title="Game log">${icon.log}<span>Log</span></button>
+        <button class="btn small ghost tb" data-act="menu" aria-label="Menu" title="Menu">${icon.menu}</button>
       </div>
     </header>
     <div class="strip">${strip}</div>
@@ -927,7 +936,10 @@ const handlers = {
       title: 'Menu',
       body: `<div class="menu">
         <button class="btn wide" data-act="rules">How to play</button>
-        <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>
+        <div class="row">
+          <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>
+          ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(shareLink(app.code))}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
+        </div>
         ${isHost && app.view.game.players.length > 1 ? `<button class="btn wide" data-act="handoff-list">Pass hosting to someone else…</button>` : ''}
         ${isHost && app.view.game.players.length > 1 ? `<button class="btn wide" data-act="drop-list">Remove a player…</button>` : ''}
         ${isHost ? `<button class="btn wide danger" data-act="abandon">End game for everyone</button>` : `<button class="btn wide ghost" data-act="leave">Leave game</button>`}
