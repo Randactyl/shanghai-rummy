@@ -38,6 +38,17 @@ const ui = {
   roundKey: null,
 };
 
+// ------------------------------------------------------------------ card style (per device)
+
+const BACKS = [['blue', 'Classic'], ['red', 'Ruby'], ['green', 'Forest'], ['purple', 'Royal'], ['black', 'Midnight'], ['sunset', 'Sunset']];
+const prefs = { back: 'blue', four: false, ...sget('shrum.cards', {}) };
+function applyPrefs() {
+  document.documentElement.dataset.back = prefs.back;
+  document.documentElement.classList.toggle('four-color', !!prefs.four);
+  sset('shrum.cards', prefs);
+}
+applyPrefs();
+
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 const cleanCode = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
@@ -291,7 +302,7 @@ function cardHTML(id, { cls = '', attrs = '' } = {}) {
   }
   const r = rankLabel(rankOf(id));
   const s = SUIT_SYMBOL[suitOf(id)];
-  return `<div class="card ${isRed(id) ? 'red' : 'black'} ${cls}" data-card="${id}" ${attrs} aria-label="${esc(label(id))}"><span class="corner">${r}<i>${s}</i></span><span class="pip">${s}</span></div>`;
+  return `<div class="card ${isRed(id) ? 'red' : 'black'} s-${suitOf(id)} ${cls}" data-card="${id}" ${attrs} aria-label="${esc(label(id))}"><span class="corner">${r}<i>${s}</i></span><span class="pip">${s}</span></div>`;
 }
 const backHTML = (cls = '', attrs = '') => `<div class="card back ${cls}" ${attrs}></div>`;
 
@@ -376,7 +387,7 @@ function homeHTML() {
         </div>` : ''}
     </section>
     <footer class="foot muted">
-      <button class="link" data-act="rules">How to play</button>
+      <button class="link" data-act="rules">How to play</button> · <button class="link" data-act="card-style">Card style</button>
       ${LOCAL ? ' · <b>Local test mode</b> (tabs in this browser only)' : ''}
     </footer>
   </main>`;
@@ -848,6 +859,22 @@ const RULES_HTML = `
   <p><b>Scoring:</b> cards left in hand — Joker 50, Ace 20, K–10 10, 9–2 5.</p>
   <p class="muted small">Going out: the round ends when someone runs out of cards. That can be by discarding their last card or by playing their whole hand.</p>`;
 
+function cardStyleModal() {
+  const sample = ['H14.0', 'S13.0', 'D12.0', 'C11.0'];
+  return {
+    title: 'Card style',
+    body: `<p class="muted small center">Only changes how cards look on this device.</p>
+      <h3>Card back</h3>
+      <div class="backs">${BACKS.map(([k, name]) => `<button class="back-opt ${prefs.back === k ? 'on' : ''}" data-act="set-back" data-back="${k}" aria-pressed="${prefs.back === k}">
+        <div class="card back" data-back="${k}"></div><span>${name}</span></button>`).join('')}</div>
+      <h3>Suits</h3>
+      <label class="mod ${prefs.four ? 'on' : ''}"><input type="checkbox" id="four-color" ${prefs.four ? 'checked' : ''}>
+        <span><b>Four-color suits</b><span class="muted small">Diamonds blue and Clubs green, so suits are easier to tell apart.</span></span></label>
+      <div class="sample">${sample.map((c) => cardHTML(c)).join('')}</div>`,
+    buttons: '<button class="btn primary" data-act="close-modal">Done</button>',
+  };
+}
+
 // ------------------------------------------------------------------ toasts
 
 function toast(text, kind = 'info') {
@@ -919,6 +946,8 @@ const handlers = {
     leave();
   },
   rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
+  'card-style'() { ui.modal = cardStyleModal(); renderModal(); },
+  'set-back'(el) { prefs.back = el.dataset.back; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); },
   'close-modal'() { ui.modal = null; renderModal(); },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('Invite link copied'); }
@@ -947,6 +976,7 @@ const handlers = {
       title: 'Menu',
       body: `<div class="menu">
         <button class="btn wide" data-act="rules">How to play</button>
+        <button class="btn wide" data-act="card-style">${icon.palette} Card style</button>
         <div class="row">
           <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>
           ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(shareLink(app.code))}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
@@ -1133,6 +1163,7 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.id === 'four-color') { prefs.four = t.checked; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); return; }
   if (!app.session) return;
   if (t.dataset.mod) app.session.updateSettings({ mods: { [t.dataset.mod]: t.checked } });
   else if (t.name === 'dm') app.session.updateSettings({ dealerMethod: t.value, pickedDealer: t.value === 'pick' ? ($('#picked')?.value || null) : app.view.lobby.settings.pickedDealer });
