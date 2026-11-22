@@ -758,13 +758,24 @@ function renderModal() {
   const mr = $('#modal-root');
   const forced = forcedModal();
   const m = forced || ui.modal;
-  const html = !m ? '' : `<div class="backdrop" ${forced ? '' : 'data-act="close-modal"'}>
-    <div class="modal ${m.cls || ''}" role="dialog" aria-modal="true">
-      ${m.title ? `<h2>${m.title}</h2>` : ''}
+  const closable = !forced;
+  const html = !m ? '' : `<div class="backdrop" ${closable ? 'data-act="close-modal"' : ''}>
+    <div class="modal ${m.cls || ''}" role="dialog" aria-modal="true" aria-label="${esc(m.label || (m.title || '').replace(/<[^>]+>/g, ''))}">
+      ${m.title || closable ? `<header class="modal-head">
+        <h2>${m.title || ''}</h2>
+        ${closable ? `<button class="icon-btn modal-x" data-act="close-modal" aria-label="Close">${icon.close}</button>` : ''}
+      </header>` : ''}
       <div class="modal-body">${m.body}</div>
-      ${m.buttons ? `<div class="modal-btns">${m.buttons}</div>` : ''}
+      ${m.buttons ? `<footer class="modal-btns">${m.buttons}</footer>` : ''}
     </div></div>`;
-  if (html !== lastHTML.modal) { mr.innerHTML = html; lastHTML.modal = html; }
+  if (html !== lastHTML.modal) {
+    const prevScroll = mr.querySelector('.modal-body')?.scrollTop || 0;
+    const same = mr.querySelector('.modal')?.getAttribute('aria-label') === (m && esc(m.label || (m.title || '').replace(/<[^>]+>/g, '')));
+    mr.innerHTML = html;
+    lastHTML.modal = html;
+    // Keep the scroll position when the same dialog re-renders with fresh data.
+    if (same && mr.querySelector('.modal-body')) mr.querySelector('.modal-body').scrollTop = prevScroll;
+  }
 }
 
 function forcedModal() {
@@ -907,7 +918,7 @@ const handlers = {
     sset('shrum.host', null);
     leave();
   },
-  rules() { ui.modal = { title: 'How to play', body: RULES_HTML, buttons: '<button class="btn" data-act="close-modal">Got it</button>' }; renderModal(); },
+  rules() { ui.modal = { title: 'How to play', cls: 'wide', body: RULES_HTML, buttons: '<button class="btn primary" data-act="close-modal">Got it</button>' }; renderModal(); },
   'close-modal'() { ui.modal = null; renderModal(); },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('Invite link copied'); }
@@ -1020,10 +1031,10 @@ const handlers = {
     ui.modal = null;
     app.session?.endGame();
   },
-  scores() { ui.modal = { title: 'Scores', cls: 'wide', body: scoreTable(app.view.game), buttons: '<button class="btn" data-act="close-modal">Close</button>' }; renderModal(); },
+  scores() { ui.modal = { title: 'Scores', cls: 'wide', body: scoreTable(app.view.game) }; renderModal(); },
   log() {
     const g = app.view.game;
-    ui.modal = { title: 'Game log', body: `<ul class="log">${g.log.slice().reverse().map((e) => `<li class="${e.kind}">${esc(e.text)}</li>`).join('')}</ul>`, buttons: '<button class="btn" data-act="close-modal">Close</button>' };
+    ui.modal = { title: 'Game log', body: `<ul class="log">${g.log.slice().reverse().map((e) => `<li class="${e.kind}">${esc(e.text)}</li>`).join('')}</ul>` };
     renderModal();
   },
   draw(el) { ui.fresh = new Set(); act({ type: 'draw', from: el.dataset.from }); },
