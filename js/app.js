@@ -753,7 +753,7 @@ function gameHTML(v) {
   const showBuy = g.buyOpen && !myTurn && !(g.pendingBuy?.requesters || []).includes(me) && dt;
   const showShanghai = mods.shanghai && g.shanghaiWindow && g.shanghaiWindow.by !== me && dt && ui.mode?.kind !== 'shanghai';
   const discardLabel = dt?.locked ? '🔒 Shanghaied' : dt?.by ? `From ${esc(dt.by === me ? 'you' : playerName(v, dt.by))}` : `Discard · ${g.discardCount}`;
-  const piles = g.phase === 'turn' || g.phase === 'compose' ? `
+  const piles = `
     <div class="piles">
       <div class="pile">
         ${backHTML(canDraw ? 'can' : '', canDraw ? 'data-act="draw" data-from="deck" role="button" tabindex="0" aria-label="Draw from the deck"' : '')}
@@ -768,7 +768,7 @@ function gameHTML(v) {
         ${showShanghai ? `<button class="btn shanghai" data-act="shanghai">Shanghai!</button>` : ''}
         ${ui.mode ? `<button class="btn ghost" data-act="cancel-mode">Cancel</button>` : ''}
       </div>
-    </div>` : '';
+    </div>`;
 
   // ---- actions
   const actions = [];
@@ -807,22 +807,28 @@ function gameHTML(v) {
         <button class="btn small ghost tb" data-act="menu" aria-label="Menu" title="Menu">${icon.menu}</button>
       </div>
     </header>
-    <div class="strip">${strip}</div>
-    <div class="status ${statusCls}">${status}</div>
-    ${offlineNotice(v)}
-    <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
-    <section class="table">${table}</section>
-    ${piles}
-    ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
-    <section class="hand-wrap">
-      <div class="hand-head">
-        <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
-        <span class="seg" role="group" aria-label="Sort your hand"><span class="seg-label">Sort</span>${sortBtn('rank', 'Rank')}${sortBtn('suit', 'Suit')}</span>
+    <div class="g-side">
+      <div class="strip">${strip}</div>
+      <div class="info">
+        <div class="status ${statusCls}">${status}</div>
+        ${offlineNotice(v)}
+        <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
       </div>
-      <div class="hand" id="hand">
-        ${handIds.map((id) => cardHTML(id, { cls: `${ui.selected.has(id) ? 'sel' : ''} ${ui.fresh.has(id) ? 'fresh' : ''}`, attrs: 'data-hand="1"' })).join('')}
-      </div>
-    </section>
+      ${piles}
+    </div>
+    <div class="g-main">
+      <section class="table">${table}</section>
+      ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
+      <section class="hand-wrap">
+        <div class="hand-head">
+          <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
+          <span class="seg" role="group" aria-label="Sort your hand"><span class="seg-label">Sort</span>${sortBtn('rank', 'Rank')}${sortBtn('suit', 'Suit')}</span>
+        </div>
+        <div class="hand" id="hand">
+          ${handIds.map((id) => cardHTML(id, { cls: `${ui.selected.has(id) ? 'sel' : ''} ${ui.fresh.has(id) ? 'fresh' : ''}`, attrs: 'data-hand="1"' })).join('')}
+        </div>
+      </section>
+    </div>
     <div class="actionbar ${actions.length ? '' : 'empty'}">${actions.join('')}</div>
   </main>`;
 }
