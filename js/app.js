@@ -638,8 +638,9 @@ function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
     const missing = plan.need[type] - ui.staged.filter((s) => s.type === type).length;
     for (let k = 0; k < missing; k++) {
       const can = k === 0 && !!selCheck[type];
+      const sub = can ? `Tap to add these ${ui.selected.size}` : k === 0 ? SLOT_HINT(type, mods) : '';
       slots.push(`<div class="slot empty ${can ? 'can' : ''}" ${can ? `data-act="stage" data-type="${type}" role="button" tabindex="0"` : ''}>
-        <b>${type === 'group' ? 'Group' : 'Run'}</b><span>${can ? `Tap to add these ${ui.selected.size}` : SLOT_HINT(type, mods)}</span>
+        <b>${type === 'group' ? 'Group' : 'Run'}</b>${sub ? `<span>${sub}</span>` : ''}
       </div>`);
     }
   }
@@ -653,10 +654,10 @@ function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
   else if (plan.ready && !plan.fully && !completes) hint = canPlayStep ? 'The Gambit: lay these down now, or keep going.' : 'The Gambit: you can lay these down on your turn, or keep going.';
   else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
   else if (ui.staged.length && plan.problem && mods.gambit) hint = esc(plan.problem);
-  else if (!ui.staged.length && !plan.have) hint = `Tap cards in your hand to select them. ${g.req.groups ? 'A <b>Group</b> is ' + SLOT_HINT('group', mods) + '.' : ''} ${g.req.runs ? 'A <b>Run</b> is ' + SLOT_HINT('run', mods) + '.' : ''}`;
+  else if (!ui.staged.length && !plan.have) hint = 'Tap cards in your hand to select them.';
   else if (plan.fully && mods.seeingDouble) hint = 'Seeing Double: you can lay down extra Groups/Runs.';
   else hint = 'Keep going — select the next set.';
-  const title = plan.fully ? 'Extra melds' : plan.have ? `Finish going down · ${esc(g.req.label)}` : `Going down · ${esc(g.req.label)}`;
+  const title = plan.fully ? 'Extra melds' : plan.have ? 'Finish going down' : 'Going down';
   return `<section class="planner ${plan.ready ? 'ready' : ''}">
     <div class="planner-head"><b>${title}</b>${!myTurn ? '<span class="muted small">planning</span>' : ''}</div>
     ${slots.length ? `<div class="slots">${slots.join('')}</div>` : ''}
@@ -719,7 +720,7 @@ function gameHTML(v) {
     } else if (myTurn) {
       statusCls = 'mine';
       if (one && targets.size) status = 'Tap a glowing meld on the table to play it — or discard it';
-      else if (!myDown) status = plan.ready ? 'Ready to go down — tap Lay down' : `Build ${esc(g.req.label)} to go down, or discard to end your turn`;
+      else if (!myDown) status = 'Go down, or discard to end your turn';
       else if (plan.active && !plan.fully) status = 'Keep laying down, or discard to end your turn';
       else status = 'Select a card to play it on the table, or discard to end your turn';
     } else {
@@ -748,7 +749,7 @@ function gameHTML(v) {
           }).join('')}
         </div>
       </div>`).join('')
-    : `<div class="empty-table muted">No cards on the table yet.<br><span class="small">This round: <b>${esc(g.req.label)}</b></span></div>`;
+    : `<div class="empty-table muted">No cards on the table yet.</div>`;
 
   // ---- piles
   const canDraw = myTurn && g.turnStep === 'draw' && !g.shanghaiPick;
