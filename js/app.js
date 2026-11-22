@@ -1,5 +1,5 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
-import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, mayPlayOn, isFullyDown, describeMeld, checkLayDownCounts } from './rules.js';
+import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, mayPlayOn, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
 import { HostSession } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
@@ -545,6 +545,87 @@ function recoveringHTML(v) {
 
 const cutOff = () => app.role === 'client' && !!app.lostSince;
 
+/** What this player can still lay down, and how the staged melds fill it. */
+function downPlan(g, me) {
+  const mods = g.settings.mods;
+  const req = g.req;
+  const have = g.down?.[me] || null;
+  const fully = isFullyDown(have, req);
+  const active = ['compose', 'turn'].includes(g.phase) && (!have || mods.seeingDouble || (mods.gambit && !fully));
+  if (!active) return { active: false };
+  const got = have || { groups: 0, runs: 0 };
+  const need = { group: Math.max(0, req.groups - got.groups), run: Math.max(0, req.runs - got.runs) };
+  const stagedOf = (t) => ui.staged.filter((s) => s.type === t).length;
+  const wants = (t) => (t === 'group' ? req.groups : req.runs) > 0 && (mods.seeingDouble || stagedOf(t) < need[t]);
+  const melds = ui.staged.map((s) => ({ type: s.type, cards: s.type === 'run' ? s.options[s.opt].cards : s.cards }));
+  const problem = ui.staged.length ? checkLayDownCounts(melds, got, req, mods) : 'nothing';
+  return { active: true, have, fully, need, wants, melds, ready: !problem, problem };
+}
+
+/** Does the current selection make a Group and/or a Run? */
+function selectionCheck(g, ids) {
+  const mods = g.settings.mods;
+  const out = { group: null, run: null, why: '' };
+  if (!ids.length) return out;
+  const g1 = analyzeGroup(ids, mods);
+  const r1 = arrangeRun(ids, mods);
+  if (g1.ok && !(mods.restrictive && ids.length !== MIN_GROUP)) out.group = g1;
+  if (r1.ok && !(mods.restrictive && ids.length !== MIN_RUN)) out.run = r1;
+  if (!out.group && !out.run) {
+    const kinds = [g.req.groups > 0 && 'group', g.req.runs > 0 && 'run'].filter(Boolean);
+    const min = Math.min(...kinds.map((k) => (k === 'group' ? MIN_GROUP : MIN_RUN)));
+    if (ids.length < min) out.why = `${ids.length} selected — pick ${min - ids.length} more`;
+    else if (mods.restrictive && g1.ok) out.why = `Restrictive Requirements: exactly ${MIN_GROUP} cards per Group`;
+    else if (mods.restrictive && r1.ok) out.why = `Restrictive Requirements: exactly ${MIN_RUN} cards per Run`;
+    else out.why = kinds.length === 2 ? `Not a Group or a Run yet` : kinds[0] === 'group' ? g1.err : r1.err;
+  }
+  return out;
+}
+
+const SLOT_HINT = (type, mods) => type === 'group'
+  ? (mods.crazy ? '3+ of one suit' : '3+ of the same rank')
+  : (mods.crazy ? '4+ in a row, any suits' : '4+ in a row, same suit');
+
+function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
+  const mods = g.settings.mods;
+  const slots = [];
+  // Staged melds first (in the order they were made), then empty slots for what's still needed.
+  ui.staged.forEach((s, i) => {
+    const cards = s.type === 'run' ? s.options[s.opt].cards : s.cards;
+    slots.push(`<div class="slot filled">
+      <div class="staged-head"><span>${s.type === 'run' ? 'Run' : 'Group'} ✓</span>
+        ${s.type === 'run' && s.options.length > 1 ? `<button class="icon-btn" data-act="flip-run" data-i="${i}" title="Move the Joker to the other end" aria-label="Move the Joker">⇄</button>` : ''}
+        <button class="icon-btn" data-act="unstage" data-i="${i}" aria-label="Put back in hand" title="Put back">✕</button></div>
+      <div class="meld">${cards.map((c) => cardHTML(c, { cls: 'mini' })).join('')}</div>
+    </div>`);
+  });
+  for (const type of ['group', 'run']) {
+    const missing = plan.need[type] - ui.staged.filter((s) => s.type === type).length;
+    for (let k = 0; k < missing; k++) {
+      const can = k === 0 && !!selCheck[type];
+      slots.push(`<div class="slot empty ${can ? 'can' : ''}" ${can ? `data-act="stage" data-type="${type}" role="button" tabindex="0"` : ''}>
+        <b>${type === 'group' ? 'Group' : 'Run'}</b><span>${can ? `Tap to add these ${ui.selected.size}` : SLOT_HINT(type, mods)}</span>
+      </div>`);
+    }
+  }
+  const sel = ui.selected.size;
+  let hint;
+  const fit = selCheck.group && plan.wants('group') ? 'Group' : selCheck.run && plan.wants('run') ? 'Run' : null;
+  if (sel && fit) hint = `That's a ${fit}! Tap <b>Make ${fit}</b> to set it aside here.`;
+  else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
+  else if (sel) hint = esc(selCheck.why);
+  else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
+  else if (!ui.staged.length && !plan.have) hint = `Tap cards in your hand to select them. ${g.req.groups ? 'A <b>Group</b> is ' + SLOT_HINT('group', mods) + '.' : ''} ${g.req.runs ? 'A <b>Run</b> is ' + SLOT_HINT('run', mods) + '.' : ''}`;
+  else if (plan.fully && mods.seeingDouble) hint = 'Seeing Double: you can lay down extra Groups/Runs.';
+  else hint = mods.gambit && ui.staged.length ? 'The Gambit: you can lay these down now, or keep going.' : 'Keep going — select the next set.';
+  const title = plan.fully ? 'Extra melds' : plan.have ? `Finish going down · ${esc(g.req.label)}` : `Going down · ${esc(g.req.label)}`;
+  return `<section class="planner ${plan.ready ? 'ready' : ''}">
+    <div class="planner-head"><b>${title}</b>${!myTurn ? '<span class="muted small">planning</span>' : ''}</div>
+    ${slots.length ? `<div class="slots">${slots.join('')}</div>` : ''}
+    <div class="planner-hint small">${hint}</div>
+  </section>`;
+}
+
 function gameHTML(v) {
   // Lost the host: show them offline and freeze the table until we're reconnected.
   if (cutOff()) v = { ...v, online: { ...v.online, [v.hostId]: false } };
@@ -558,6 +639,10 @@ function gameHTML(v) {
   const handIds = ui.order.filter((id) => !staged.has(id));
   const targets = computeTargets(v);
   const myDown = g.down?.[me];
+  const sel = ui.order.filter((id) => ui.selected.has(id));
+  const one = sel.length === 1 ? sel[0] : null;
+  const plan = downPlan(g, me);
+  const selCheck = plan.active ? selectionCheck(g, sel) : {};
   const compose = g.phase === 'compose';
   const ready = new Set(g.ready || []);
 
@@ -594,11 +679,10 @@ function gameHTML(v) {
       status = `Your turn — draw from the deck${g.discardTop && !g.discardTop.locked ? ` or take the ${label(g.discardTop.id)}` : ''}`;
     } else if (myTurn) {
       statusCls = 'mine';
-      const canDown = !myDown || (mods.gambit && !isFullyDown(myDown, g.req)) || mods.seeingDouble;
-      if (ui.selected.size === 1 && targets.size) status = 'Tap a highlighted meld to play the card, or discard it';
-      else if (!myDown) status = `Select cards to build ${esc(g.req.label)}, or discard to end your turn`;
-      else if (canDown && !isFullyDown(myDown, g.req)) status = 'Keep laying down, play on your own cards, or discard';
-      else status = 'Play cards onto the table, then discard';
+      if (one && targets.size) status = 'Tap a glowing meld on the table to play it — or discard it';
+      else if (!myDown) status = plan.ready ? 'Ready to go down — tap Lay down' : `Build ${esc(g.req.label)} to go down, or discard to end your turn`;
+      else if (plan.active && !plan.fully) status = 'Keep laying down, play on your own cards, or discard';
+      else status = 'Select a card to play it on the table, or discard to end your turn';
     } else {
       status = `${esc(cur.name)}'s turn${g.turnStep === 'draw' ? '' : ' · drew a card'}`;
     }
@@ -646,34 +730,19 @@ function gameHTML(v) {
       </div>
     </div>` : '';
 
-  // ---- staging tray
-  const tray = ui.staged.length ? `
-    <div class="tray">
-      ${ui.staged.map((s, i) => {
-        const cards = s.type === 'run' ? s.options[s.opt].cards : s.cards;
-        return `<div class="staged">
-          <div class="staged-head"><span>${s.type === 'run' ? 'Run' : 'Group'}</span>
-            ${s.type === 'run' && s.options.length > 1 ? `<button class="icon-btn" data-act="flip-run" data-i="${i}" title="Move the Joker">⇄</button>` : ''}
-            <button class="icon-btn" data-act="unstage" data-i="${i}" aria-label="Put back">✕</button></div>
-          <div class="meld">${cards.map((c) => cardHTML(c, { cls: 'mini' })).join('')}</div>
-        </div>`;
-      }).join('')}
-    </div>` : '';
-
-  // ---- hand + actions
-  const sel = [...ui.selected];
-  const one = sel.length === 1 ? sel[0] : null;
-  const canStage = canPlayStep && (!myDown || mods.seeingDouble || (mods.gambit && !isFullyDown(myDown, g.req)));
+  // ---- actions
   const actions = [];
   if (compose) {
     const iam = ready.has(me);
     actions.push(`<button class="btn ${iam ? 'ghost' : 'primary'}" data-act="ready" data-ready="${iam ? 0 : 1}">${iam ? '✓ Ready (undo)' : "I'm ready"}</button>`);
     if (app.role === 'host') actions.push(`<button class="btn" data-act="flip-now" title="Skip the rest of the countdown">Flip now</button>`);
   }
+  if (plan.active && !ui.mode) {
+    if (selCheck.group && plan.wants('group')) actions.push(`<button class="btn" data-act="stage" data-type="group">Make Group</button>`);
+    if (selCheck.run && plan.wants('run')) actions.push(`<button class="btn" data-act="stage" data-type="run">Make Run</button>`);
+  }
   if (canPlayStep) {
-    if (canStage && sel.length >= 3 && g.req.groups > 0) actions.push(`<button class="btn" data-act="stage" data-type="group">Make Group</button>`);
-    if (canStage && sel.length >= 4 && g.req.runs > 0) actions.push(`<button class="btn" data-act="stage" data-type="run">Make Run</button>`);
-    if (ui.staged.length) actions.push(`<button class="btn primary" data-act="laydown">Lay down ${ui.staged.length === 1 ? '1 meld' : ui.staged.length + ' melds'}</button>`);
+    if (ui.staged.length) actions.push(`<button class="btn primary" data-act="laydown" ${plan.ready ? '' : 'disabled'}>Lay down ${ui.staged.length === 1 ? '1 meld' : ui.staged.length + ' melds'}</button>`);
     if (one) {
       actions.push(`<button class="btn danger" data-act="discard">Discard ${label(one)}</button>`);
       if (mods.shanghai) actions.push(`<button class="btn ghost" data-act="discard" data-shanghai="1" title="Discard and block the next player from taking it">Discard + Shanghai</button>`);
@@ -698,10 +767,10 @@ function gameHTML(v) {
     <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
     <section class="table">${table}</section>
     ${piles}
-    ${tray}
+    ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
     <section class="hand-wrap">
       <div class="hand-head">
-        <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} staged` : ''})</span></span>
+        <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
         <span class="sorts"><button class="btn small ghost" data-act="sort" data-by="rank">Sort by rank</button><button class="btn small ghost" data-act="sort" data-by="suit">by suit</button></span>
       </div>
       <div class="hand" id="hand">
@@ -860,6 +929,13 @@ const RULES_HTML = `
   <ol class="rounds">${ROUNDS.map((r) => `<li>${r.label}</li>`).join('')}</ol>
   <p><b>Group:</b> 3+ cards of the same value. <b>Run:</b> 4+ cards of one suit in sequence (Aces high).</p>
   <p><b>Your turn:</b> draw from the deck or discard pile → lay down the round's requirement if you have it (you're now <i>down</i>) → once down, play cards on anyone's table cards → discard.</p>
+  <h3>Going down, step by step</h3>
+  <ol class="steps">
+    <li>Tap cards in your hand to select them, e.g. three 7s.</li>
+    <li>When they make a Group or Run, tap <b>Make Group</b> / <b>Make Run</b> (or the glowing slot). They're set aside in the <b>Going down</b> tray.</li>
+    <li>Repeat until every slot in the tray is filled, then tap <b>Lay down</b>. You can fill the tray while waiting for your turn.</li>
+    <li>Once you're down, select a single card and tap a glowing meld on the table to play it there. Then discard to end your turn.</li>
+  </ol>
   <p><b>Buying:</b> after the current player draws, anyone else can buy the top discard. You also take 2 penalty cards. Ties go to whoever's turn comes sooner.</p>
   <p><b>Jokers:</b> wild, one per meld. Down players can swap in the real card and must move the Joker somewhere else on the table.</p>
   <p><b>Shanghai:</b> discarding a card that could be played on the table? Call <i>Discard + Shanghai</i> so the next player can't take it. Forget, and anyone can yell <i>Shanghai!</i>, play it to the table, and pass you a random card from their hand.</p>
@@ -1100,6 +1176,8 @@ const handlers = {
     const g = app.view.game;
     const mods = g.settings.mods;
     const ids = ui.order.filter((id) => ui.selected.has(id));
+    const plan = downPlan(g, app.view.me);
+    if (!plan.active || !plan.wants(el.dataset.type)) return;
     if (el.dataset.type === 'group') {
       const r = analyzeGroup(ids, mods);
       if (!r.ok) return toast(r.err, 'error');
@@ -1124,8 +1202,7 @@ const handlers = {
   discard(el) {
     const card = [...ui.selected][0];
     if (!card) return;
-    if (ui.staged.length && !confirm('You have cards staged to lay down. Discard anyway (they go back to your hand)?')) return;
-    ui.staged = [];
+    // Anything in the Going down tray stays there for next turn.
     act({ type: 'discard', cardId: card, shanghai: !!el.dataset.shanghai });
   },
   meld(el) {

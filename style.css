@@ -102,7 +102,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
 .alert { background: rgba(229, 96, 79, 0.2); border: 1px solid var(--danger); padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; }
 .statusbar { position: sticky; top: 0; z-index: 30; background: #8a5a00; color: #fff; text-align: center; padding: 6px 12px; font-size: 0.9rem; margin: 0 calc(-1 * var(--gutter)) 8px; }
-.game.frozen .table, .game.frozen .piles, .game.frozen .tray, .game.frozen .actionbar, .game.frozen .status { opacity: 0.45; pointer-events: none; filter: grayscale(0.4); }
+.game.frozen .table, .game.frozen .piles, .game.frozen .planner, .game.frozen .actionbar, .game.frozen .status { opacity: 0.45; pointer-events: none; filter: grayscale(0.4); }
 .statusbar.lost { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; background: #6b2a1f; }
 .statusbar.lost .btn { background: #fff; color: #6b2a1f; }
 .tag { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.15); vertical-align: middle; }
@@ -212,7 +212,17 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .pile-label { font-size: 0.78rem; color: var(--ink-dim); }
 .pile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1; min-width: 140px; justify-content: flex-end; align-self: center; }
 
-.tray { display: flex; gap: 10px; flex-wrap: wrap; padding: 10px; margin-top: 6px; border-radius: var(--radius); background: rgba(242, 193, 78, 0.1); border: 1px dashed rgba(242, 193, 78, 0.6); }
+.planner { margin-top: 8px; padding: 8px 10px 10px; border-radius: var(--radius); background: rgba(242, 193, 78, 0.07); border: 1px dashed rgba(242, 193, 78, 0.5); }
+.planner.ready { border-style: solid; border-color: var(--gold); background: rgba(242, 193, 78, 0.14); }
+.planner-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.85rem; margin-bottom: 6px; }
+.slots { display: flex; gap: 8px; flex-wrap: wrap; }
+.slot { border-radius: 10px; min-height: calc(var(--mh) + 30px); }
+.slot.filled { background: rgba(0, 0, 0, 0.18); padding: 4px 6px 6px; }
+.slot.empty { border: 2px dashed rgba(255, 255, 255, 0.25); display: grid; align-content: center; justify-items: center; min-width: 100px; padding: 6px 10px; text-align: center; color: var(--ink-dim); font-size: 0.75rem; }
+.slot.empty b { color: var(--ink); font-size: 0.9rem; }
+.slot.empty.can { border-color: var(--gold); color: var(--gold); cursor: pointer; background: rgba(242, 193, 78, 0.14); animation: glowBorder 1.4s ease-in-out infinite; }
+.planner-hint { margin-top: 6px; color: var(--ink-dim); }
+.planner-hint b { color: var(--ink); }
 .staged-head { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; margin-bottom: 2px; }
 .staged-head span { flex: 1; }
 .staged-head .icon-btn { height: 26px; min-width: 26px; padding: 0 4px; }
@@ -269,6 +279,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .standings li::before { content: counter(s) '.'; width: 1.6em; color: var(--ink-dim); }
 .standings li span { flex: 1; }
 .standings li.win { background: rgba(242, 193, 78, 0.18); font-weight: 700; }
+ol.steps { padding-left: 1.4em; margin: 4px 0 12px; display: grid; gap: 4px; }
 .backs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .back-opt { background: transparent; border: 2px solid transparent; border-radius: 12px; padding: 8px 4px; display: grid; justify-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem; }
 .back-opt.on { border-color: var(--gold); background: rgba(242, 193, 78, 0.1); }
