@@ -716,6 +716,19 @@ function selectionCheck(g, ids) {
   return out;
 }
 
+/** The planned meld with `ids` added to it, or null if they don't fit. */
+function grownStage(g, s, ids) {
+  const mods = g.settings.mods;
+  if (!ids.length) return null;
+  const cards = [...(s.type === 'run' ? s.options[s.opt].cards : s.cards), ...ids];
+  if (s.type === 'group') {
+    if (mods.restrictive || !analyzeGroup(cards, mods).ok) return null;
+    return { type: 'group', cards };
+  }
+  const r = mods.restrictive ? null : arrangeRun(cards, mods);
+  return r?.ok ? { type: 'run', cards, options: r.options, opt: 0 } : null;
+}
+
 const SLOT_HINT = (type, mods) => type === 'group'
   ? (mods.crazy ? '3+ of one suit' : '3+ of the same rank')
   : (mods.crazy ? '4+ in a row, any suits' : '4+ in a row, same suit');
@@ -723,10 +736,13 @@ const SLOT_HINT = (type, mods) => type === 'group'
 function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
   const mods = g.settings.mods;
   const slots = [];
+  const ids = ui.order.filter((id) => ui.selected.has(id));
+  const growable = ui.staged.map((s) => !!grownStage(g, s, ids));
   // Staged melds first (in the order they were made), then empty slots for what's still needed.
   ui.staged.forEach((s, i) => {
     const cards = s.type === 'run' ? s.options[s.opt].cards : s.cards;
-    slots.push(`<div class="slot filled">
+    const grow = growable[i];
+    slots.push(`<div class="slot filled ${grow ? 'can' : ''}" ${grow ? `data-act="grow" data-i="${i}" role="button" tabindex="0" title="Add the selected cards"` : ''}>
       <div class="staged-head"><span>${s.type === 'run' ? 'Run' : 'Group'} ✓</span>
         ${s.type === 'run' && s.options.length > 1 ? `<button class="icon-btn" data-act="flip-run" data-i="${i}" title="Move the Joker to the other end" aria-label="Move the Joker">⇄</button>` : ''}
         <button class="icon-btn" data-act="unstage" data-i="${i}" aria-label="Put back in hand" title="Put back">✕</button></div>
@@ -748,7 +764,10 @@ function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
   let hint;
   const fit = selCheck.group && plan.wants('group') ? 'Group' : selCheck.run && plan.wants('run') ? 'Run' : null;
   if (sel && fit) hint = `That's a ${fit}! Tap <b>Make ${fit}</b> to set it aside here.`;
-  else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
+  else if (sel && growable.some(Boolean)) {
+    const kinds = new Set(ui.staged.filter((_, i) => growable[i]).map((s) => (s.type === 'group' ? 'Group' : 'Run')));
+    hint = `Tap the glowing ${[...kinds].join(' or ')} to add ${sel === 1 ? 'it' : 'them'}.`;
+  } else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
   else if (sel) hint = esc(selCheck.why);
   else if (plan.ready && !plan.fully && !completes) hint = canPlayStep ? 'The Gambit: lay these down now, or keep going.' : 'The Gambit: lay these down on your turn, or keep going.';
   else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
@@ -1549,6 +1568,14 @@ const handlers = {
       if (!r.ok) return toast(r.err, 'error');
       ui.staged.push({ type: 'run', cards: ids, options: r.options, opt: 0 });
     }
+    ui.selected.clear();
+    render();
+  },
+  grow(el) {
+    const i = +el.dataset.i;
+    const next = ui.staged[i] && grownStage(app.view.game, ui.staged[i], ui.order.filter((id) => ui.selected.has(id)));
+    if (!next) return;
+    ui.staged[i] = next;
     ui.selected.clear();
     render();
   },

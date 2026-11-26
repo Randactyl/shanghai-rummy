@@ -244,6 +244,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .slot.empty { border: 2px dashed rgba(255, 255, 255, 0.25); display: grid; align-content: center; justify-items: center; min-width: 100px; padding: 6px 10px; text-align: center; color: var(--ink-dim); font-size: 0.75rem; }
 .slot.empty b { color: var(--ink); font-size: 0.9rem; }
 .slot.empty.can { border-color: var(--gold); color: var(--gold); cursor: pointer; background: rgba(242, 193, 78, 0.14); animation: glowBorder 1.4s ease-in-out infinite; }
+.slot.filled.can { box-shadow: 0 0 0 2px var(--gold); cursor: pointer; background: rgba(242, 193, 78, 0.14); animation: glowBorder 1.4s ease-in-out infinite; }
 .planner-hint { margin-top: 6px; color: var(--ink-dim); }
 .planner-hint b { color: var(--ink); }
 .staged-head { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; margin-bottom: 2px; }
