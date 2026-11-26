@@ -1,7 +1,7 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
 import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, addOptions, layOffPlans, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
-import { HostSession } from './host.js';
+import { HostSession, REACTIONS } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
 
 // ------------------------------------------------------------------ storage / identity
@@ -40,6 +40,8 @@ const ui = {
   seatKey: null,
   nudge: null, // repeating "your turn" reminder until the player touches the screen
   sortBy: sget('shrum.sort', null), // 'rank' | 'suit' | null (manual order)
+  chatShown: null, // last chat message number popped up over its sender's seat
+  chatRead: null, // last chat message number seen in the chat panel
   buyArm: null, // {card, at}: when the Buy button started offering this card
 };
 
@@ -225,7 +227,7 @@ function leave() {
   if (app.session) app.session.close();
   if (app.takeover) app.takeover.session.close();
   Object.assign(app, { role: null, code: null, session: null, client: null, view: null, status: '', lastGood: null, resume: null, lostSince: null, takeover: null });
-  Object.assign(ui, { selected: new Set(), order: [], staged: [], mode: null, modal: null, lastLog: null });
+  Object.assign(ui, { selected: new Set(), order: [], staged: [], mode: null, modal: null, lastLog: null, chatShown: null, chatRead: null });
   history.replaceState(null, '', location.pathname + location.search);
   ui.turnKey = null;
   stopNudge();
@@ -260,7 +262,49 @@ function onView(v) {
     ui.lastLog = null;
   }
   notifyTurn(v);
+  showNewChat(v);
   queueRender();
+}
+
+function sendChat(o) {
+  if (app.role !== 'host') return app.client?.send({ t: 'chat', ...o });
+  const err = app.session.chat(app.pid, o);
+  if (err) toast(err, 'error');
+}
+
+/** Pop new messages and reactions up over the sender's seat (or as a toast if their seat isn't on screen). */
+function showNewChat(v) {
+  const chat = v.chat || [];
+  const last = chat.at(-1)?.n || 0;
+  // On joining, rejoining or taking over, what's already there counts as seen.
+  if (ui.chatShown == null || last < ui.chatShown) ui.chatShown = ui.chatRead = last;
+  const fresh = chat.filter((m) => m.n > ui.chatShown && serverNow() - m.at < 15000);
+  ui.chatShown = last;
+  if (ui.modal?.kind === 'chat') { ui.chatRead = last; return; } // they're reading it already
+  // After the render, so seats are in place.
+  if (fresh.length) setTimeout(() => fresh.forEach(chatBubble), 0);
+}
+
+function chatBubble(m) {
+  const seat = document.querySelector(`[data-seat="${CSS.escape(m.from)}"]`);
+  const r = seat?.getBoundingClientRect();
+  if (!r || r.bottom < 0 || r.top > innerHeight || $('#modal-root').childElementCount) {
+    toast(`${m.name}: ${m.emoji || m.text}`, 'chat');
+    return;
+  }
+  document.querySelector(`.bubble[data-from="${CSS.escape(m.from)}"]`)?.remove();
+  const el = document.createElement('div');
+  el.className = `bubble ${m.emoji ? 'emoji' : ''}`;
+  el.dataset.from = m.from;
+  el.textContent = m.emoji || m.text;
+  if (!m.emoji) el.setAttribute('aria-label', `${m.name}: ${m.text}`);
+  el.setAttribute('role', 'status');
+  document.body.appendChild(el);
+  el.style.left = `${Math.max(8, Math.min(r.left + 12, innerWidth - el.offsetWidth - 8))}px`;
+  el.style.top = `${Math.max(8, r.top - el.offsetHeight + 14)}px`;
+  const ms = m.emoji ? 2200 : Math.min(7000, 2800 + m.text.length * 40);
+  setTimeout(() => el.classList.add('out'), ms);
+  setTimeout(() => el.remove(), ms + 400);
 }
 
 const serverNow = () => Date.now() + app.clockOffset;
@@ -405,6 +449,7 @@ const icon = {
   copy: svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 16),
   share: svg('<path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>'),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+  chat: svg('<path d="M4 5h16v11H10l-5 4v-4H4z"/>'),
   rules: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 7h6M9 11h6"/>'),
   scores: svg('<path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>'),
   log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
@@ -440,6 +485,7 @@ function render() {
   showActiveSeat(v?.game);
   // The log stays open while play goes on, so keep it current.
   if (ui.modal?.kind === 'log' && v?.game) ui.modal = logModal(v.game);
+  if (ui.modal?.kind === 'chat' && v) ui.modal = chatModal(v);
   renderModal();
   tick();
 }
@@ -553,6 +599,7 @@ function lobbyHTML(v) {
       <div class="share">
         <button class="btn" data-act="copy" data-text="${esc(link)}">${icon.copy} Copy invite link</button>
         ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(link)}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
+        ${chatButton(v, 'btn')}
       </div>
     </header>
 
@@ -561,7 +608,7 @@ function lobbyHTML(v) {
       <p class="muted small">Seat order = turn order (clockwise).${isHost ? ' Use the arrows to rearrange.' : ''}</p>
       <ol class="seats">
         ${players.map((p, i) => `
-          <li>
+          <li data-seat="${p.id}">
             <span class="dot ${p.online ? 'on' : 'off'}" title="${p.online ? 'connected' : 'not connected'}"></span>
             <span class="pname">${esc(p.name)}${p.id === v.hostId ? ' <span class="tag">host</span>' : ''}${p.id === v.me ? ' <span class="tag you">you</span>' : ''}</span>
             ${isHost ? `<span class="seat-ctl">
@@ -942,6 +989,7 @@ function gameHTML(v) {
         <button class="btn small ghost tb" data-act="game-rules" aria-label="Rules" title="Rules">${icon.rules}<span>Rules</span></button>
         <button class="btn small ghost tb" data-act="scores" aria-label="Scores" title="Scores">${icon.scores}<span>Scores</span></button>
         <button class="btn small ghost tb" data-act="log" aria-label="Game log" title="Game log">${icon.log}<span>Log</span></button>
+        ${chatButton(v, 'btn small ghost tb')}
         <button class="btn small ghost tb" data-act="menu" aria-label="Menu" title="Menu">${icon.menu}</button>
       </div>
     </header>
@@ -1062,6 +1110,9 @@ function renderModal() {
     </div></div>`;
   if (html !== lastHTML.modal) {
     const prevScroll = mr.querySelector('.modal-body')?.scrollTop || 0;
+    // A message arriving mustn't wipe out the one being typed.
+    const typing = $('#chat-input');
+    const typed = typing && { value: typing.value, focused: document.activeElement === typing, at: typing.selectionStart };
     const same = mr.querySelector('.modal')?.getAttribute('aria-label') === (m && esc(m.label || (m.title || '').replace(/<[^>]+>/g, '')));
     mr.innerHTML = html;
     lastHTML.modal = html;
@@ -1069,6 +1120,11 @@ function renderModal() {
     ui.replayModal = document.hidden && !!m?.confetti;
     // Keep the scroll position when the same dialog re-renders with fresh data.
     if (same && mr.querySelector('.modal-body')) mr.querySelector('.modal-body').scrollTop = prevScroll;
+    const input = $('#chat-input');
+    if (same && input && typed) {
+      input.value = typed.value;
+      if (typed.focused) { input.focus(); input.setSelectionRange(typed.at, typed.at); }
+    }
   }
 }
 
@@ -1259,6 +1315,29 @@ function scoreTable(g) {
   <p class="muted small center">★ went out · lowest total wins</p>`;
 }
 
+function chatButton(v, cls) {
+  // Reactions don't count: they've already popped up over the seat.
+  const unread = (v.chat || []).filter((m) => m.n > ui.chatRead && m.from !== v.me && m.text).length;
+  const label = unread ? `Chat, ${unread} new` : 'Chat';
+  return `<button class="${cls} chat-btn" data-act="chat" aria-label="${label}" title="${label}">${icon.chat}<span>Chat</span>${unread ? `<b class="badge">${unread > 9 ? '9+' : unread}</b>` : ''}</button>`;
+}
+
+function chatModal(v) {
+  const msgs = (v.chat || []).slice().reverse();
+  return {
+    kind: 'chat',
+    title: 'Chat',
+    body: `<div class="reactions" role="group" aria-label="Quick reactions">${REACTIONS.map((e) => `<button class="btn react" data-act="react" data-emoji="${e}">${e}</button>`).join('')}</div>
+      <div class="chat-compose">
+        <input id="chat-input" maxlength="200" placeholder="Say something…" autocomplete="off" enterkeyhint="send" aria-label="Message">
+        <button class="btn primary" data-act="chat-send">Send</button>
+      </div>
+      ${msgs.length ? `<p class="log-dir muted small">Newest first</p>
+      <ol class="log chat">${msgs.map((m) => `<li class="${m.from === v.me ? 'mine' : ''}"><b>${esc(m.from === v.me ? 'You' : m.name)}</b> ${m.emoji ? `<span class="chat-emoji">${esc(m.emoji)}</span>` : esc(m.text)}</li>`).join('')}</ol>`
+        : '<p class="muted small center">No messages yet.</p>'}`,
+  };
+}
+
 function logModal(g) {
   const entries = g.log.slice().reverse();
   const older = entries.length && entries[entries.length - 1].n > 1;
@@ -1438,6 +1517,26 @@ const handlers = {
   ready(el) { act({ type: 'ready', ready: el.dataset.ready === '1' }); },
   'flip-now'() { act({ type: 'flip' }); },
   'close-modal'() { ui.modal = null; renderModal(); },
+  chat() {
+    ui.chatRead = app.view.chat?.at(-1)?.n || 0;
+    ui.modal = chatModal(app.view);
+    render();
+    // Not on touch screens: the keyboard would cover the reactions.
+    if (matchMedia('(pointer: fine)').matches) $('#chat-input')?.focus();
+  },
+  react(el) {
+    // Close first so our own reaction pops up over our seat too.
+    ui.modal = null;
+    renderModal();
+    sendChat({ emoji: el.dataset.emoji });
+  },
+  'chat-send'() {
+    const input = $('#chat-input');
+    if (!input?.value.trim()) return;
+    sendChat({ text: input.value });
+    input.value = '';
+    input.focus();
+  },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('Invite link copied'); }
     catch { prompt('Copy this link:', el.dataset.text); }
@@ -1659,6 +1758,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.matches('[role="button"][data-act]')) e.target.click();
   if (e.key === 'Enter' && e.target.id === 'joincode') handlers.join();
+  if (e.key === 'Enter' && e.target.id === 'chat-input' && !e.isComposing) handlers['chat-send']();
   if (e.key === 'Escape' && ui.modal) handlers['close-modal']();
 });
 
