@@ -919,10 +919,10 @@ function gameHTML(v) {
         <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
       </div>
       ${piles}
+      ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
     </div>
     <div class="g-main">
       <section class="table">${table}</section>
-      ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
       <section class="hand-wrap">
         <div class="hand-head">
           <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
