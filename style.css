@@ -388,6 +388,27 @@ table.scores { border-collapse: collapse; width: 100%; font-variant-numeric: tab
 .log li.shanghai { color: #ff9c8f; font-weight: 700; }
 .log li.big, .log li.down { font-weight: 700; }
 .log li.buy { color: #9cc0ff; }
+
+/* ---------- chat */
+.chat-btn { position: relative; }
+.badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 0.7rem; line-height: 18px; text-align: center; }
+.reactions { display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: 6px; margin-bottom: 12px; }
+.btn.react { padding: 0; min-height: 44px; font-size: 1.4rem; }
+.chat-compose { display: flex; gap: 8px; margin-bottom: 14px; }
+.chat-compose input { flex: 1; min-width: 0; }
+.log.chat li { overflow-wrap: anywhere; }
+.log.chat li.mine b { color: var(--gold); }
+.chat-emoji { font-size: 1.2rem; line-height: 1; }
+.toast.chat { border-color: rgba(242, 193, 78, 0.5); }
+/* Pops up over the sender's seat. Fixed to the page so table re-renders don't wipe it. */
+.bubble {
+  position: fixed; z-index: 45; max-width: min(260px, calc(100vw - 16px)); pointer-events: none;
+  background: var(--card); color: var(--black); border-radius: 14px 14px 14px 4px; padding: 6px 10px;
+  font-size: 0.9rem; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); overflow-wrap: anywhere;
+  animation: drop 0.2s ease-out; transition: opacity 0.4s, transform 0.4s;
+}
+.bubble.emoji { background: none; box-shadow: none; padding: 0; font-size: 2.2rem; line-height: 1; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); animation: bob 0.45s ease-in-out 2 alternate; }
+.bubble.out { opacity: 0; transform: translateY(-14px); }
 .glossary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 6px 0 4px; }
 .glossary dt { font-weight: 700; }
 .glossary dd { margin: 0; }

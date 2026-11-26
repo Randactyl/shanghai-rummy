@@ -8,6 +8,9 @@ import {
 } from './engine.js';
 
 export const MAX_PLAYERS = 10;
+export const REACTIONS = ['👍', '👏', '😂', '😮', '😬', '😭', '🔥', '🎉'];
+const CHAT_KEEP = 60; // messages kept for players who open the chat late or reconnect
+const CHAT_BURST = [6, 5000]; // at most this many messages per player in this many ms
 
 const cleanName = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 20) || 'Player';
 
@@ -38,7 +41,7 @@ export class HostSession {
       const v = recovery.view;
       const oldHostId = v.hostId;
       const players = v.lobby.players.map(({ id, name }) => ({ id, name }));
-      this.data = { code, hostId: host.id, lobby: { players, settings: v.lobby.settings, votes: v.lobby.votes || {} }, game: null };
+      this.data = { code, hostId: host.id, lobby: { players, settings: v.lobby.settings, votes: v.lobby.votes || {} }, game: null, chat: v.chat || [] };
       if (v.snapshot) {
         const oldHostName = [...v.snapshot.players, ...(v.snapshot.departed || [])].find((p) => p.id === oldHostId)?.name || 'The host';
         this.recovery = { oldHostId, oldHostName, best: v.snapshot, reports: { [host.id]: v.game?.hand || [] } };
@@ -52,10 +55,13 @@ export class HostSession {
         hostId: host.id,
         lobby: { players: [{ id: host.id, name: cleanName(host.name) }], settings: structuredClone(DEFAULT_SETTINGS), votes: {} },
         game: null,
+        chat: [],
       };
     }
     this.data.hostId = host.id;
     this.data.lobby.votes ||= {}; // saves from before voting existed
+    this.data.chat ||= []; // ...or chat
+    this.chatTimes = new Map();
     if (this.recovery && this.recovery.best.players.every((p) => p.id === this.recovery.oldHostId || p.id in this.recovery.reports)) {
       this.finishRecovery(); // nobody else to wait for
     }
@@ -86,6 +92,7 @@ export class HostSession {
         lobby: { players: [], settings: lobby.settings },
         online: Object.fromEntries(r.best.players.map((p) => [p.id, this.online(p.id)])),
         game: null,
+        chat: this.data.chat,
         recovering: { from: r.oldHostName, host: r.best.players.find((p) => p.id === this.hostId)?.name, waitingFor: waiting.map((p) => ({ id: p.id, name: p.name, online: this.online(p.id) })) },
       };
     }
@@ -101,6 +108,7 @@ export class HostSession {
       },
       online: Object.fromEntries((game ? game.players : lobby.players).map((p) => [p.id, this.online(p.id)])),
       game: game ? viewFor(game, pid) : null,
+      chat: this.data.chat,
       snapshot: game ? publicSnapshot(game) : null,
     };
   }
@@ -128,6 +136,9 @@ export class HostSession {
     } else if (msg.t === 'act') {
       const err = this.act(pid, msg.a);
       if (err) this.transport.send(cid, { t: 'err', msg: err, rid: msg.rid });
+    } else if (msg.t === 'chat') {
+      const err = this.chat(pid, msg);
+      if (err) this.transport.send(cid, { t: 'err', msg: err });
     } else if (msg.t === 'vote') {
       this.vote(pid, msg.mod, !!msg.on);
     } else if (msg.t === 'leave') {
@@ -253,6 +264,28 @@ export class HostSession {
     if (voters.length) lobby.votes[mod] = voters;
     else delete lobby.votes[mod];
     this.changed();
+  }
+
+  /** A chat message ({text}) or a quick reaction ({emoji}). Returns an error string or null. */
+  chat(pid, { text, emoji }) {
+    const { lobby, game } = this.data;
+    const who = (game ? game.players : lobby.players).find((p) => p.id === pid);
+    if (!who || this.recovery) return 'Chat is unavailable right now';
+    const entry = { n: (this.data.chat.at(-1)?.n || 0) + 1, from: pid, name: who.name, at: this.now() };
+    if (emoji != null) {
+      if (!REACTIONS.includes(emoji)) return 'Unknown reaction';
+      entry.emoji = emoji;
+    } else {
+      entry.text = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (!entry.text) return null;
+    }
+    const [max, per] = CHAT_BURST;
+    const recent = (this.chatTimes.get(pid) || []).filter((t) => entry.at - t < per);
+    if (recent.length >= max) return 'Slow down a little';
+    this.chatTimes.set(pid, [...recent, entry.at]);
+    this.data.chat = [...this.data.chat, entry].slice(-CHAT_KEEP);
+    this.changed();
+    return null;
   }
 
   removeFromLobby(pid) {

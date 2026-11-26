@@ -179,3 +179,42 @@ test('players vote for modifiers in the lobby; the host sees who wants what', ()
   assert.deepEqual(old.viewFor('H').lobby.votes, {});
   s.close();
 });
+
+test('chat and reactions are relayed to everyone, checked, and kept short', () => {
+  const tr = fakeTransport();
+  let t = 1000;
+  const s = new HostSession({ code: 'ABCDE', host: { id: 'H', name: 'H' }, transport: tr, now: () => t });
+  tr.deliver('c1', { t: 'hello', pid: 'P1', name: 'Ann' });
+  tr.deliver('c2', { t: 'hello', pid: 'P2', name: 'Bo' });
+
+  tr.deliver('c1', { t: 'chat', text: '  hi\n  <b>all</b>  ' });
+  assert.equal(s.chat('H', { emoji: '😂' }), null);
+  const chat = tr.last('c2', 'view').v.chat;
+  assert.deepEqual(chat.map(({ n, from, name, text, emoji }) => ({ n, from, name, text, emoji })), [
+    { n: 1, from: 'P1', name: 'Ann', text: 'hi <b>all</b>', emoji: undefined },
+    { n: 2, from: 'H', name: 'H', text: undefined, emoji: '😂' },
+  ]);
+
+  // Unknown reactions, blank messages and strangers are refused
+  tr.deliver('c2', { t: 'chat', emoji: '💩' });
+  assert.equal(tr.last('c2', 'err').msg, 'Unknown reaction');
+  assert.equal(s.chat('P2', { text: '   ' }), null);
+  assert.equal(s.chat('nobody', { text: 'hey' }), 'Chat is unavailable right now');
+  assert.equal(s.viewFor('H').chat.length, 2);
+
+  // Long messages are cut; bursts are throttled
+  s.chat('P2', { text: 'x'.repeat(500) });
+  assert.equal(s.viewFor('H').chat.at(-1).text.length, 200);
+  for (let i = 0; i < 5; i++) s.chat('P2', { emoji: '👍' });
+  assert.equal(s.chat('P2', { emoji: '👍' }), 'Slow down a little');
+  t += 6000;
+  assert.equal(s.chat('P2', { emoji: '👍' }), null);
+
+  // Only the most recent messages are kept, and numbering carries on
+  for (let i = 0; i < 100; i++) { t += 2000; s.chat('H', { text: `m${i}` }); }
+  const kept = s.viewFor('P1').chat;
+  assert.equal(kept.length, 60);
+  assert.equal(kept.at(-1).text, 'm99');
+  assert.equal(kept.at(-1).n, kept[0].n + 59);
+  s.close();
+});
