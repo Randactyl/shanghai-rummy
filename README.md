@@ -52,6 +52,14 @@ Any static host works. You just upload the folder.
 
 **Netlify / Cloudflare Pages:** drag-and-drop the folder into their "deploy a site" page.
 
+**Link previews:** the Open Graph tags in `index.html` use absolute URLs (link-preview crawlers require them),
+so change `og:url` and `og:image` if you host it somewhere else. The preview image `og-image.png` is rendered
+from `og-image.svg`; after editing the SVG, re-render it with:
+
+```sh
+firefox --headless --window-size=1200,630 --screenshot "$PWD/og-image.png" "file://$PWD/og-image.svg"
+```
+
 **Try it locally:**
 
 ```sh
