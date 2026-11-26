@@ -1305,7 +1305,8 @@ function scoreTable(g) {
 }
 
 function chatButton(v, cls) {
-  const unread = (v.chat || []).filter((m) => m.n > ui.chatRead && m.from !== v.me).length;
+  // Reactions don't count: they've already popped up over the seat.
+  const unread = (v.chat || []).filter((m) => m.n > ui.chatRead && m.from !== v.me && m.text).length;
   const label = unread ? `Chat, ${unread} new` : 'Chat';
   return `<button class="${cls} chat-btn" data-act="chat" aria-label="${label}" title="${label}">${icon.chat}<span>Chat</span>${unread ? `<b class="badge">${unread > 9 ? '9+' : unread}</b>` : ''}</button>`;
 }

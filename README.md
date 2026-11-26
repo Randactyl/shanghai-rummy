@@ -99,7 +99,7 @@ browser talk to each other directly, with no network at all.
 9. If someone disconnects for good, the host can remove them from the "is disconnected" banner, or from
    ⋯ → *Remove a player*.
 10. Tap *Chat* (in the lobby or the game's top bar) to send a message or a quick emoji reaction. It pops up
-    over your seat for everyone; the chat panel keeps the last 60 messages, and the button shows how many
+    over your seat for everyone; the chat panel keeps the last 60 messages, and the button counts messages
     you haven't read.
 
 **The host's page must stay open for the whole game.** A laptop is the best host. If a phone hosts, the app
