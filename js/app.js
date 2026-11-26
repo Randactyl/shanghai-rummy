@@ -433,6 +433,8 @@ function render() {
     if ($('.table')) $('.table').scrollTop = tableScroll;
   }
   showActiveSeat(v?.game);
+  // The log stays open while play goes on, so keep it current.
+  if (ui.modal?.kind === 'log' && v?.game) ui.modal = logModal(v.game);
   renderModal();
   tick();
 }
@@ -936,7 +938,7 @@ function gameHTML(v) {
       <div class="info">
         <div class="status ${statusCls}">${status}</div>
         ${offlineNotice(v)}
-        <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
+        <ol class="ticker small" aria-label="Latest events, newest first">${g.log.slice(-2).reverse().map((e) => `<li>${esc(e.text)}</li>`).join('')}</ol>
       </div>
       ${piles}
       ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
@@ -1246,6 +1248,18 @@ function scoreTable(g) {
   <p class="muted small center">★ went out · lowest total wins</p>`;
 }
 
+function logModal(g) {
+  const entries = g.log.slice().reverse();
+  const older = entries.length && entries[entries.length - 1].n > 1;
+  return {
+    kind: 'log',
+    title: 'Game log',
+    body: `<p class="log-dir muted small">Newest first</p>
+      <ol class="log">${entries.map((e, i) => `<li class="${e.kind}">${i === 0 ? '<span class="tag gold">Latest</span> ' : ''}${esc(e.text)}</li>`).join('')}</ol>
+      ${older ? '<p class="muted small log-end">Earlier events aren\'t kept.</p>' : ''}`,
+  };
+}
+
 function scoresModal(g) {
   const v = app.view;
   const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : 0;
@@ -1529,11 +1543,7 @@ const handlers = {
     app.session?.endGame();
   },
   scores() { ui.modal = scoresModal(app.view.game); renderModal(); },
-  log() {
-    const g = app.view.game;
-    ui.modal = { title: 'Game log', body: `<ul class="log">${g.log.slice().reverse().map((e) => `<li class="${e.kind}">${esc(e.text)}</li>`).join('')}</ul>` };
-    renderModal();
-  },
+  log() { ui.modal = logModal(app.view.game); renderModal(); },
   draw(el) { ui.fresh = new Set(); act({ type: 'draw', from: el.dataset.from }); },
   buy() { act({ type: 'buy' }); },
   shanghai() {
