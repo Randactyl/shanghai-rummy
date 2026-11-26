@@ -1,5 +1,5 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
-import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, addOptions, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
+import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, addOptions, layOffPlans, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
 import { HostSession } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
@@ -810,6 +810,7 @@ function gameHTML(v) {
     } else if (myTurn) {
       statusCls = 'mine';
       if (one && targets.size) status = 'Tap a glowing meld on the table to play it — or discard it';
+      else if (sel.length > 1 && targets.size) status = `Tap a glowing meld on the table to play all ${sel.length}`;
       else if (!myDown) status = 'Go down, or discard to end your turn';
       else if (plan.active && !plan.fully) status = 'Keep laying down, or discard to end your turn';
       else status = 'Select a card to play it on the table, or discard to end your turn';
@@ -982,9 +983,23 @@ function computeTargets(v) {
     }
     return out;
   }
-  if (ui.selected.size !== 1) return out;
+  if (!ui.selected.size || !isFullyDown(g.down[me], g.req)) return out;
+  if (ui.selected.size > 1) {
+    // Several cards at once: a meld glows only if every selected card fits on it.
+    const ids = ui.order.filter((id) => ui.selected.has(id));
+    if (ids.length > 13) return out;
+    const where = (s) => (s.end ? ` on the ${s.end} end` : '');
+    for (const m of g.melds) {
+      for (const p of layOffPlans(m, ids, mods)) {
+        add(m, {
+          label: m.type === 'group' ? `Add all ${ids.length}` : p.steps.map((s) => `${label(s.cardId)}${where(s)}`).join(', '),
+          action: { type: 'layOff', meldId: m.id, cards: p.steps },
+        });
+      }
+    }
+    return out;
+  }
   const card = [...ui.selected][0];
-  if (!isFullyDown(g.down[me], g.req)) return out;
   for (const m of g.melds) {
     for (const o of layOffOptions(m, card, mods)) {
       if (o.kind === 'add') add(m, { label: endLabel(m, o, card), action: { type: 'layOff', meldId: m.id, cardId: card, end: o.end } });
@@ -1557,7 +1572,7 @@ const handlers = {
     if (!opts?.length) return;
     if (opts.length === 1) return chooseTarget(opts[0]);
     ui.modal = {
-      title: 'Play it where?',
+      title: ui.selected.size > 1 ? 'Play them where?' : 'Play it where?',
       body: `<div class="menu">${opts.map((o, i) => `<button class="btn wide" data-act="choose" data-i="${i}" data-meld="${el.dataset.meld}">${esc(o.label)}</button>`).join('')}</div>`,
       buttons: '<button class="btn ghost" data-act="close-modal">Cancel</button>',
     };

@@ -172,6 +172,29 @@ export function withCardAdded(meld, cardId, end, mods) {
   return m;
 }
 
+/** Every distinct way to add all of `ids` to one meld. Each plan lists the steps in play order
+ *  ({ cardId, end }) and the meld they produce. A run may need its cards in a particular order
+ *  (the 3 before the 2), and a Joker may fit at either end, so runs are searched; a group takes
+ *  cards in any order. */
+export function layOffPlans(meld, ids, mods) {
+  const plans = new Map();
+  const walk = (m, left, steps) => {
+    if (!left.length) {
+      const key = meld.type === 'group' ? 'g' : m.cards.join(',');
+      if (!plans.has(key)) plans.set(key, { steps, meld: m });
+      return;
+    }
+    const tries = meld.type === 'group' ? [left[0]] : left;
+    for (const id of tries) {
+      for (const o of addOptions(m, id, mods)) {
+        walk(withCardAdded(m, id, o.end, mods), left.filter((x) => x !== id), [...steps, { cardId: id, end: o.end }]);
+      }
+    }
+  };
+  walk(meld, ids, []);
+  return [...plans.values()];
+}
+
 export function describeMeld(meld, mods) {
   if (meld.type === 'group') {
     return meld.rank ? `Group of ${rankLabel(meld.rank)}s` : `${SUIT_NAME[meld.suit]} group`;

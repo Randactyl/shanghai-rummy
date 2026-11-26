@@ -418,11 +418,20 @@ export function apply(prev, pid, action, ctx = {}) {
       if (!isFullyDown(state.down[me], req)) {
         fail(state.down[me] ? 'Finish going down before you play on the table' : 'You must be down to play on the table');
       }
-      if (!state.hands[me].includes(action.cardId)) fail('That card is not in your hand');
-      placeOnMeld(state, meld, action.cardId, action.end);
-      removeFromHand(state, me, action.cardId);
-      markPlayed(state, [action.cardId]);
-      log(state, `${nameOf(state, me)} played the ${label(action.cardId)} on ${meld.owner === me ? 'their own' : nameOf(state, meld.owner) + "'s"} ${describeMeld(meld, mods)}.`);
+      // One card ({ cardId, end }) or several at once ({ cards: [{ cardId, end }, …] }, played in that order).
+      const steps = Array.isArray(action.cards) ? action.cards : [{ cardId: action.cardId, end: action.end }];
+      if (!steps.length) fail('Nothing to play');
+      const ids = steps.map((s) => s.cardId);
+      if (new Set(ids).size !== ids.length || !ids.every((c) => state.hands[me].includes(c))) {
+        fail(ids.length > 1 ? 'Those cards are not all in your hand' : 'That card is not in your hand');
+      }
+      let m = meld;
+      for (const s of steps) m = placeOnMeld(state, m, s.cardId, s.end);
+      for (const c of ids) removeFromHand(state, me, c);
+      markPlayed(state, ids);
+      const names = ids.map((c) => label(c));
+      const what = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
+      log(state, `${nameOf(state, me)} played the ${what} on ${meld.owner === me ? 'their own' : nameOf(state, meld.owner) + "'s"} ${describeMeld(meld, mods)}.`);
       checkOut(state, me);
       return state;
     }
