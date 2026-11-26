@@ -190,11 +190,14 @@ test('defensive shanghai locks the card for one turn', () => {
   assert.throws(() => apply(s, c, { type: 'shanghai', meldId: 'mx' }), /Too late/);
   s = apply(s, b, { type: 'draw', from: 'deck' }, { rng });
   assert.throws(() => apply(s, c, { type: 'buy' }, { now: 0 }), /not available/);
-  s = apply(s, b, { type: 'discard', cardId: s.hands[b][0] }, { rng });
+  const covering = s.hands[b][0];
+  s = apply(s, b, { type: 'discard', cardId: covering }, { rng });
   // Card now covered; c draws the covering card, exposing the D5 again on c's turn
   s = apply(s, c, { type: 'draw', from: 'discard' }, { rng });
   assert.equal(s.discard.at(-1).id, 'D5.1');
-  s = apply(s, a, { type: 'buy' }, { rng, now: 0 });
+  // A buy aimed at the card c just took is refused, rather than buying the D5 now on top.
+  assert.throws(() => apply(s, a, { type: 'buy', cardId: covering }, { now: 0 }), /is gone/);
+  s = apply(s, a, { type: 'buy', cardId: 'D5.1' }, { rng, now: 0 });
   s = apply(s, SYSTEM, { type: 'resolveBuy' }, { rng });
   assert.ok(s.hands[a].includes('D5.1'));
 });

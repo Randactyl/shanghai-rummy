@@ -337,6 +337,8 @@ export function apply(prev, pid, action, ctx = {}) {
     case 'buy': {
       if (myTurn) fail("You can't buy on your own turn");
       if (!buyOpen(state)) fail(state.turnStep === 'draw' ? 'You can buy once the current player has drawn' : 'That card is not available to buy');
+      // The tap names the card the player saw, so a stale one can't buy whatever is on top now.
+      if (action.cardId && top(state).id !== action.cardId) fail(`The ${label(action.cardId)} is gone`);
       if (!state.pendingBuy) {
         state.pendingBuy = { requesters: [], until: now + BUY_WINDOW_MS, card: top(state).id };
         log(state, `${nameOf(state, me)}: "I'll buy that!"`, 'buy');
