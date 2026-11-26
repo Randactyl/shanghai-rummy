@@ -38,7 +38,7 @@ export class HostSession {
       const v = recovery.view;
       const oldHostId = v.hostId;
       const players = v.lobby.players.map(({ id, name }) => ({ id, name }));
-      this.data = { code, hostId: host.id, lobby: { players, settings: v.lobby.settings }, game: null };
+      this.data = { code, hostId: host.id, lobby: { players, settings: v.lobby.settings, votes: v.lobby.votes || {} }, game: null };
       if (v.snapshot) {
         const oldHostName = [...v.snapshot.players, ...(v.snapshot.departed || [])].find((p) => p.id === oldHostId)?.name || 'The host';
         this.recovery = { oldHostId, oldHostName, best: v.snapshot, reports: { [host.id]: v.game?.hand || [] } };
@@ -50,11 +50,12 @@ export class HostSession {
       this.data = restore || {
         code,
         hostId: host.id,
-        lobby: { players: [{ id: host.id, name: cleanName(host.name) }], settings: structuredClone(DEFAULT_SETTINGS) },
+        lobby: { players: [{ id: host.id, name: cleanName(host.name) }], settings: structuredClone(DEFAULT_SETTINGS), votes: {} },
         game: null,
       };
     }
     this.data.hostId = host.id;
+    this.data.lobby.votes ||= {}; // saves from before voting existed
     if (this.recovery && this.recovery.best.players.every((p) => p.id === this.recovery.oldHostId || p.id in this.recovery.reports)) {
       this.finishRecovery(); // nobody else to wait for
     }
@@ -96,6 +97,7 @@ export class HostSession {
       lobby: {
         players: lobby.players.map((p) => ({ ...p, online: this.online(p.id) })),
         settings: lobby.settings,
+        votes: lobby.votes,
       },
       online: Object.fromEntries((game ? game.players : lobby.players).map((p) => [p.id, this.online(p.id)])),
       game: game ? viewFor(game, pid) : null,
@@ -126,9 +128,11 @@ export class HostSession {
     } else if (msg.t === 'act') {
       const err = this.act(pid, msg.a);
       if (err) this.transport.send(cid, { t: 'err', msg: err, rid: msg.rid });
+    } else if (msg.t === 'vote') {
+      this.vote(pid, msg.mod, !!msg.on);
     } else if (msg.t === 'leave') {
       if (!this.data.game) {
-        this.data.lobby.players = this.data.lobby.players.filter((p) => p.id !== pid);
+        this.removeFromLobby(pid);
         this.changed();
       }
     }
@@ -192,7 +196,7 @@ export class HostSession {
     this.data.game = rebuildFromSnapshot(r.best, r.reports, this.hostId, r.oldHostId);
     this.data.replacedHosts = [...(this.data.replacedHosts || []), r.oldHostId];
     const still = new Set(this.data.game.players.map((p) => p.id));
-    this.data.lobby.players = this.data.lobby.players.filter((p) => still.has(p.id));
+    for (const p of this.data.lobby.players) if (!still.has(p.id)) this.removeFromLobby(p.id);
     for (const [pid, cid] of [...this.pidToConn]) {
       if (still.has(pid)) continue;
       this.transport.send(cid, { t: 'reject', reason: 'You were removed from the game when the host changed.' });
@@ -239,6 +243,27 @@ export class HostSession {
     }
   }
 
+  /** A player asks for a modifier to be turned on. The host sees the tally; only the host changes settings. */
+  vote(pid, mod, on) {
+    const { lobby, game } = this.data;
+    if (game || pid === this.hostId || !(mod in DEFAULT_SETTINGS.mods)) return;
+    if (!lobby.players.some((p) => p.id === pid)) return;
+    const voters = (lobby.votes[mod] || []).filter((id) => id !== pid);
+    if (on) voters.push(pid);
+    if (voters.length) lobby.votes[mod] = voters;
+    else delete lobby.votes[mod];
+    this.changed();
+  }
+
+  removeFromLobby(pid) {
+    const { lobby } = this.data;
+    lobby.players = lobby.players.filter((p) => p.id !== pid);
+    for (const mod of Object.keys(lobby.votes)) {
+      lobby.votes[mod] = lobby.votes[mod].filter((id) => id !== pid);
+      if (!lobby.votes[mod].length) delete lobby.votes[mod];
+    }
+  }
+
   // ---- host-only lobby controls
 
   updateSettings(patch) {
@@ -269,7 +294,7 @@ export class HostSession {
     if (!this.data.game) { this.kick(pid); return null; }
     const err = this.act(this.hostId, { type: 'dropPlayer', pid });
     if (err) return err;
-    this.data.lobby.players = this.data.lobby.players.filter((p) => p.id !== pid);
+    this.removeFromLobby(pid);
     const cid = this.pidToConn.get(pid);
     if (cid) {
       this.transport.send(cid, { t: 'reject', reason: 'The host removed you from this game.' });
@@ -282,7 +307,7 @@ export class HostSession {
 
   kick(pid) {
     if (pid === this.hostId || this.data.game) return;
-    this.data.lobby.players = this.data.lobby.players.filter((p) => p.id !== pid);
+    this.removeFromLobby(pid);
     const cid = this.pidToConn.get(pid);
     if (cid) {
       this.transport.send(cid, { t: 'reject', reason: 'The host removed you from the lobby.' });

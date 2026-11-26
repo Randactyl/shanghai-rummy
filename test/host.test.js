@@ -143,3 +143,39 @@ test('voluntary handoff: full data goes to the new host; old host rejoins as a p
   assert.equal(n.act('H', { type: 'startRound' }), 'Only the host can do that');
   n.close();
 });
+
+test('players vote for modifiers in the lobby; the host sees who wants what', () => {
+  const tr = fakeTransport();
+  const s = new HostSession({ code: 'ABCDE', host: { id: 'H', name: 'Hostess' }, transport: tr });
+  tr.deliver('c1', { t: 'hello', pid: 'P1', name: 'Bob' });
+  tr.deliver('c2', { t: 'hello', pid: 'P2', name: 'Cy' });
+  tr.deliver('c1', { t: 'vote', mod: 'crazy', on: true });
+  tr.deliver('c2', { t: 'vote', mod: 'crazy', on: true });
+  tr.deliver('c2', { t: 'vote', mod: 'gambit', on: true });
+  tr.deliver('c2', { t: 'vote', mod: 'nonsense', on: true });
+  assert.deepEqual(s.viewFor('H').lobby.votes, { crazy: ['P1', 'P2'], gambit: ['P2'] });
+  assert.deepEqual(tr.last('c1', 'view').v.lobby.votes.crazy, ['P1', 'P2']);
+  // Voting doesn't change the settings; only the host does that
+  assert.equal(s.viewFor('H').lobby.settings.mods.crazy, false);
+
+  tr.deliver('c1', { t: 'vote', mod: 'crazy', on: false });
+  tr.deliver('c1', { t: 'vote', mod: 'crazy', on: false });
+  assert.deepEqual(s.viewFor('H').lobby.votes.crazy, ['P2']);
+
+  // Leaving or being removed takes your votes with you
+  s.kick('P2');
+  assert.deepEqual(s.viewFor('H').lobby.votes, {});
+
+  // No voting once the game is on
+  tr.deliver('c1', { t: 'vote', mod: 'twoWays', on: true });
+  tr.deliver('c3', { t: 'hello', pid: 'P3', name: 'Di' });
+  s.startGame();
+  tr.deliver('c3', { t: 'vote', mod: 'crazy', on: true });
+  assert.deepEqual(s.viewFor('H').lobby.votes, { twoWays: ['P1'] });
+
+  // Saves from before voting existed still load
+  const old = new HostSession({ code: 'ABCDE', host: { id: 'H', name: 'H' }, transport: fakeTransport(),
+    restore: { code: 'ABCDE', hostId: 'H', lobby: { players: [{ id: 'H', name: 'H' }], settings: s.data.lobby.settings }, game: null } });
+  assert.deepEqual(old.viewFor('H').lobby.votes, {});
+  s.close();
+});

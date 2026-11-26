@@ -152,7 +152,11 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .mod { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 10px; border: 1px solid var(--panel-line); cursor: pointer; }
 .mod.on { border-color: rgba(242, 193, 78, 0.6); background: rgba(242, 193, 78, 0.08); }
 .mod input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--gold); flex: none; }
-.mod > span { display: grid; gap: 2px; }
+.mod > span { display: grid; gap: 2px; flex: 1; }
+.mod .voters { color: var(--gold); }
+.mod > .votes { display: inline-flex; align-items: center; gap: 4px; flex: none; align-self: center; padding: 3px 9px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; background: var(--gold); color: var(--gold-ink); }
+.vote-btn { display: inline-flex; align-items: center; gap: 5px; flex: none; align-self: center; min-height: 34px; padding: 4px 12px; border-radius: 999px; font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer; color: var(--ink); background: transparent; border: 1px solid var(--panel-line); }
+.vote-btn.mine { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
 .actions-row { display: grid; gap: 10px; margin-top: 8px; }
 
 /* ---------- cards */
@@ -288,9 +292,22 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .modal-body h3:first-child { margin-top: 0; }
 .menu { display: grid; gap: 8px; }
 .draws { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 12px 0; }
-.draw { display: grid; justify-items: center; gap: 4px; font-size: 0.85rem; opacity: 0.7; }
-.draw.win { opacity: 1; font-weight: 700; }
-.draw.win .card { box-shadow: 0 0 0 3px var(--gold); }
+/* Dealer draw: each card flips in turn (--i), then at --reveal the low card pops and the rest fade.
+   Final states are the defaults, so with reduced motion everything is simply shown. */
+.draw { display: grid; justify-items: center; gap: 4px; font-size: 0.85rem; opacity: 0.55; animation: fadeOut 0.4s ease var(--reveal) backwards; }
+.draw.win { opacity: 1; font-weight: 700; transform: scale(1.08); animation: winPop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) var(--reveal) backwards; }
+.draw.first { opacity: 0.9; }
+.draw-role { min-height: 1.2em; }
+.flip { width: var(--cw); height: var(--ch); perspective: 600px; }
+.flip-in { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transform: rotateY(180deg);
+  animation: flipOver 0.55s cubic-bezier(0.3, 1.3, 0.5, 1) calc(0.5s + var(--i) * 0.45s) backwards; }
+.flip-in > .card { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.flip-in > .card:not(.back) { transform: rotateY(180deg); }
+.draw.win .flip-in > .card:not(.back) { box-shadow: 0 0 0 3px var(--gold), 0 0 22px rgba(242, 193, 78, 0.7); animation: glowIn 0.5s ease var(--reveal) backwards; }
+.reveal { animation: drop 0.45s ease var(--reveal) backwards; }
+.hero.reveal .hero-title { animation-delay: var(--reveal); animation-fill-mode: backwards; }
+.recap h3 { text-align: center; margin: 4px 0 8px; }
+.recap-basics { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px; }
 .pick { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
 /* celebration screens */
 .modal.celebrate { background: radial-gradient(ellipse at 50% -10%, #1f6b4c, #12392b 65%); border-color: rgba(242, 193, 78, 0.45); }
@@ -392,6 +409,10 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 @keyframes drop { from { opacity: 0; transform: translateY(-10px); } }
 @keyframes slam { from { transform: scale(2.2); opacity: 0; } }
 @keyframes fall { to { transform: translate(var(--drift), 110vh) rotate(540deg); opacity: 0.15; } }
+@keyframes flipOver { from { transform: rotateY(0deg); } }
+@keyframes fadeOut { from { opacity: 1; } }
+@keyframes winPop { from { transform: scale(1); } 50% { transform: scale(1.2); } }
+@keyframes glowIn { from { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); } }
 @keyframes bob { to { transform: translateY(-6px) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
