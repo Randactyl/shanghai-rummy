@@ -341,6 +341,7 @@ const icon = {
   log: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   menu: svg('<circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/>'),
   palette: svg('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4.1-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1" fill="currentColor"/><circle cx="10" cy="7" r="1" fill="currentColor"/><circle cx="15" cy="7.5" r="1" fill="currentColor"/>'),
+  thumb: svg('<path d="M7 10v11H4V10z"/><path d="M7 10l4-7a2 2 0 0 1 3 1.7L13 9h6a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 17.6 21H7"/>', 14),
   hand: svg('<rect x="3" y="5" width="11" height="15" rx="2"/><path d="M17 6.5 20 7.6a1.5 1.5 0 0 1 .9 1.9L17.5 19"/>', 14),
 };
 
@@ -509,12 +510,9 @@ function lobbyHTML(v) {
         <select id="picked" class="picked" ${dis}>${players.map((p) => `<option value="${p.id}" ${settings.pickedDealer === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       </div>
       <h3>Gameplay modifiers</h3>
+      <p class="muted small">${isHost ? 'Players can vote for the modifiers they’d like. You decide what’s on.' : `Vote for the modifiers you’d like. ${esc(playerName(v, v.hostId))} sees the votes and decides.`}</p>
       <div class="mods">
-        ${MOD_INFO.map(([k, name, desc]) => `
-          <label class="mod ${settings.mods[k] ? 'on' : ''}">
-            <input type="checkbox" data-mod="${k}" ${settings.mods[k] ? 'checked' : ''} ${dis}>
-            <span><b>${name}</b><span class="muted small">${desc}</span></span>
-          </label>`).join('')}
+        ${MOD_INFO.map(([k, name, desc]) => modHTML(v, k, name, desc, isHost)).join('')}
       </div>
     </section>
 
@@ -527,6 +525,26 @@ function lobbyHTML(v) {
       <button class="btn ghost" data-act="${isHost ? 'close-room' : 'leave'}">${isHost ? 'Close game' : 'Leave'}</button>
     </section>
   </main>`;
+}
+
+function modHTML(v, k, name, desc, isHost) {
+  const on = v.lobby.settings.mods[k];
+  const voters = (v.lobby.votes || {})[k] || [];
+  const mine = voters.includes(v.me);
+  const names = voters.map((pid) => playerName(v, pid)).join(', ');
+  const count = voters.length
+    ? `<span class="votes" title="${esc(names)}" aria-label="${voters.length} vote${voters.length === 1 ? '' : 's'}">${icon.thumb}${voters.length}</span>` : '';
+  const text = `<span><b>${name}</b><span class="muted small">${desc}</span>${isHost && voters.length ? `<span class="voters small">Wanted by ${esc(names)}</span>` : ''}</span>`;
+  if (isHost) {
+    return `<label class="mod ${on ? 'on' : ''}">
+      <input type="checkbox" data-mod="${k}" ${on ? 'checked' : ''}>${text}${count}
+    </label>`;
+  }
+  return `<div class="mod static ${on ? 'on' : ''}">
+    <input type="checkbox" ${on ? 'checked' : ''} disabled aria-label="${on ? 'On' : 'Off'}">${text}
+    <button class="vote-btn ${mine ? 'mine' : ''}" data-act="vote" data-mod="${k}" data-on="${mine ? '' : '1'}" aria-pressed="${mine}"
+      title="${mine ? 'Take back your vote' : 'Vote to play with this'}">${icon.thumb}<span>${voters.length || 'Vote'}</span></button>
+  </div>`;
 }
 
 function shareLink(code) {
@@ -902,7 +920,7 @@ function renderModal() {
   const m = forced || ui.modal;
   const closable = !forced;
   const html = !m ? '' : `<div class="backdrop" ${closable ? 'data-act="close-modal"' : ''}>
-    ${m.confetti ? confettiHTML(m.confetti) : ''}
+    ${m.confetti ? confettiHTML(m.confetti, m.confettiDelay) : ''}
     <div class="modal ${m.cls || ''}" role="dialog" aria-modal="true" aria-label="${esc(m.label || (m.title || '').replace(/<[^>]+>/g, ''))}">
       ${m.title || closable ? `<header class="modal-head">
         <h2>${m.title || ''}</h2>
@@ -922,13 +940,13 @@ function renderModal() {
 }
 
 /** Falling suits. Positions are derived from the seed so re-renders don't restart the animation. */
-function confettiHTML(seed) {
+function confettiHTML(seed, delay = 0) {
   let x = seed * 9301 + 49297;
   const rnd = () => ((x = (x * 9301 + 49297) % 233280) / 233280);
   const suits = ['♥', '♠', '♦', '♣'];
   return `<div class="confetti" aria-hidden="true">${Array.from({ length: 28 }, (_, i) => {
     const s = suits[i % 4];
-    return `<i class="${s === '♥' || s === '♦' ? 'r' : ''}" style="left:${(rnd() * 100).toFixed(1)}%;animation-delay:${(rnd() * 1.2).toFixed(2)}s;animation-duration:${(2.4 + rnd() * 1.8).toFixed(2)}s;font-size:${(14 + rnd() * 18).toFixed(0)}px;--drift:${((rnd() - 0.5) * 120).toFixed(0)}px">${s}</i>`;
+    return `<i class="${s === '♥' || s === '♦' ? 'r' : ''}" style="left:${(rnd() * 100).toFixed(1)}%;animation-delay:${(delay + rnd() * 1.2).toFixed(2)}s;animation-duration:${(2.4 + rnd() * 1.8).toFixed(2)}s;font-size:${(14 + rnd() * 18).toFixed(0)}px;--drift:${((rnd() - 0.5) * 120).toFixed(0)}px">${s}</i>`;
   }).join('')}</div>`;
 }
 
@@ -946,16 +964,7 @@ function forcedModal() {
   if (!g) return null;
   const isHost = app.role === 'host';
   const hostName = esc(playerName(v, v.hostId));
-  if (g.phase === 'dealerDraw') {
-    const dealer = g.players[g.dealer];
-    return {
-      title: 'Who deals first?',
-      body: `${g.dealDraw ? `<p class="muted small center">Everyone pulled a card — lowest deals (Joker high, Ace high, ties ♥ ♠ ♦ ♣).</p>
-        <div class="draws">${g.dealDraw.map((d) => `<div class="draw ${d.pid === dealer.id ? 'win' : ''}">${cardHTML(d.card)}<div>${esc(playerName(v, d.pid))}</div></div>`).join('')}</div>` : ''}
-        <p class="center"><b>${esc(dealer.name)}</b> deals first. ${esc(g.players[(g.dealer + 1) % g.players.length].name)} plays first.</p>`,
-      buttons: isHost ? `<button class="btn primary" data-act="next-round">Deal round 1</button>` : `<span class="muted">Waiting for ${hostName} to deal…</span>`,
-    };
-  }
+  if (g.phase === 'dealerDraw') return dealerDrawModal(v, isHost, hostName);
   if (g.phase === 'gameEnd') return gameEndModal(v, isHost, hostName);
   if (g.phase === 'roundEnd') return roundEndModal(v, isHost, hostName);
   if (g.phase === 'turn' && g.shanghaiPick && g.shanghaiPick.discarder === v.me) {
@@ -967,6 +976,60 @@ function forcedModal() {
     };
   }
   return null;
+}
+
+/** The opening screen: the cards drawn for dealer flip over one by one, then the low card is revealed. */
+function dealerDrawModal(v, isHost, hostName) {
+  const g = v.game;
+  const dealer = g.players[g.dealer];
+  const first = g.players[(g.dealer + 1) % g.players.length];
+  const draws = g.dealDraw || [];
+  // Seconds until every card has flipped; everything that gives the answer away waits for this.
+  const at = draws.length ? 0.5 + draws.length * 0.45 + 0.35 : 0;
+  const later = (extra = 0) => `style="--reveal:${(at + extra).toFixed(2)}s"`;
+  const role = (pid) => (pid === dealer.id ? '<span class="tag gold">Deals</span>' : pid === first.id ? '<span class="tag">Plays first</span>' : '');
+  const drawn = draws.length ? `
+      <p class="muted small center">Everyone draws a card — lowest deals (Joker high, Ace high, ties ♥ ♠ ♦ ♣).</p>
+      <div class="draws">${draws.map((d, i) => `
+        <div class="draw ${d.pid === dealer.id ? 'win' : d.pid === first.id ? 'first' : ''}" style="--i:${i};--reveal:${at.toFixed(2)}s">
+          <div class="flip"><div class="flip-in">${backHTML()}${cardHTML(d.card)}</div></div>
+          <div class="draw-name">${esc(playerName(v, d.pid))}</div>
+          <div class="reveal draw-role">${role(d.pid)}</div>
+        </div>`).join('')}</div>` : '';
+  return {
+    title: 'Who deals first?',
+    cls: 'celebrate',
+    confetti: draws.length ? 41 : 0,
+    confettiDelay: at,
+    body: `${drawn}
+      <div class="hero reveal" ${later(0.15)}>
+        <div class="hero-kicker">${draws.length ? 'Lowest card' : 'Chosen to deal'}</div>
+        <div class="hero-title"><span class="hero-name">${esc(dealer.name)}</span> deals</div>
+        <div class="hero-sub">${esc(first.name)} plays first</div>
+      </div>
+      <div class="reveal" ${later(0.4)}>${rulesRecapHTML(g.settings)}</div>`,
+    buttons: `<div class="reveal" ${later(0.4)}>${isHost ? `<button class="btn primary" data-act="next-round">Deal round 1</button>` : `<span class="muted">Waiting for ${hostName} to deal…</span>`}</div>`,
+  };
+}
+
+/** What's different about this game, for everyone to read before the first deal. */
+function rulesRecapHTML(settings) {
+  const { mods } = settings;
+  const extra = MOD_INFO.filter(([k]) => !BASE_MODS.includes(k) && mods[k]);
+  const basics = [
+    `${ROUNDS.length} rounds`,
+    `${settings.decks} deck${settings.decks === 1 ? '' : 's'}`,
+    mods.wild ? 'Jokers wild' : 'No Jokers',
+    mods.shanghai ? 'Shanghai on' : 'No Shanghai',
+    `${settings.composeSeconds}s to arrange`,
+  ];
+  return `<section class="recap">
+    <h3>This game's rules</h3>
+    <div class="recap-basics">${basics.map((b) => `<span class="tag rule">${esc(b)}</span>`).join('')}</div>
+    ${extra.length
+      ? `<div class="mods">${extra.map(([, name, desc]) => `<div class="mod on static"><span><b>${name}</b><span class="muted small">${desc}</span></span></div>`).join('')}</div>`
+      : '<p class="muted small center">No modifiers — classic rules.</p>'}
+  </section>`;
 }
 
 function roundEndModal(v, isHost, hostName) {
@@ -1237,6 +1300,7 @@ const handlers = {
   share(el) { navigator.share?.({ title: 'Shanghai Rummy', text: 'Join my Shanghai Rummy game', url: el.dataset.text }).catch(() => {}); },
   move(el) { app.session?.movePlayer(el.dataset.pid, +el.dataset.dir); },
   kick(el) { app.session?.kick(el.dataset.pid); },
+  vote(el) { app.client?.send({ t: 'vote', mod: el.dataset.mod, on: !!el.dataset.on }); },
   'set-num'(el) {
     const s = app.view.lobby.settings;
     const k = el.dataset.key;
