@@ -190,7 +190,7 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .game { max-width: 1000px; margin: 0 auto; padding: 0 var(--gutter) 110px; display: flex; flex-direction: column; }
 /* Portrait: one column. The side/main wrappers only matter for the landscape grid below. */
 .g-side, .g-main { display: contents; }
-.topbar { order: 1; } .strip { order: 2; } .info { order: 3; } .table { order: 4; } .piles { order: 5; } .planner { order: 6; } .hand-wrap { order: 7; }
+.topbar { order: 1; } .info { order: 3; } .table { order: 4; } .piles { order: 5; } .planner { order: 6; } .hand-wrap { order: 7; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0 4px; }
 .round { background: none; border: 0; padding: 4px 6px; margin-left: -6px; border-radius: 8px; text-align: left; cursor: pointer; min-width: 0; display: grid; gap: 3px; }
 .round:hover { background: rgba(255, 255, 255, 0.06); }
@@ -200,16 +200,6 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .btn.tb { padding: 4px 8px; min-width: 36px; }
 .btn.tb span { display: none; }
 @media (min-width: 640px) { .btn.tb span { display: inline; } }
-.strip { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
-.pchip { flex: none; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px; padding: 6px 10px; min-width: 112px; display: grid; gap: 2px; }
-.pchip.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 14px rgba(242, 193, 78, 0.3); }
-.pchip.me .pc-name { text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 3px; }
-.pc-top { display: flex; align-items: center; gap: 6px; font-weight: 700; }
-.pc-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-meta { display: flex; gap: 6px; align-items: center; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.pc-cards { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-dim); }
-.pc-score { margin-left: auto; padding-left: 8px; font-size: 0.95rem; }
-.pc-score.lead { color: var(--gold); }
 .status { margin: 4px 0 2px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--panel-line); font-weight: 600; min-height: 44px; }
 .status.mine { background: rgba(242, 193, 78, 0.16); border-color: rgba(242, 193, 78, 0.55); }
 .status.hot { background: rgba(229, 96, 79, 0.2); border-color: var(--danger); }
@@ -219,10 +209,21 @@ input:focus-visible, select:focus-visible, .btn:focus-visible, [role='button']:f
 .droplist li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--panel-line); }
 .droplist li:last-child { border-bottom: 0; }
 
-.table { background: rgba(0, 0, 0, 0.14); border: 1px dashed rgba(255, 255, 255, 0.14); border-radius: var(--radius); padding: 10px; min-height: 90px; display: grid; gap: 10px; }
-.empty-table { text-align: center; padding: 18px 0; }
-.owner-name { font-size: 0.8rem; font-weight: 700; color: var(--ink-dim); margin-bottom: 4px; }
-.melds { display: flex; flex-wrap: wrap; gap: 10px; }
+.table { background: rgba(0, 0, 0, 0.14); border: 1px dashed rgba(255, 255, 255, 0.14); border-radius: var(--radius); padding: 6px; display: grid; gap: 6px; }
+/* One seat per player: who they are, then their melds. The meld row keeps its height before they go down. */
+.seat { border: 1px solid transparent; border-radius: 10px; padding: 4px 6px 2px; }
+.seat.turn { border-color: var(--gold); background: rgba(242, 193, 78, 0.07); box-shadow: 0 0 0 1px var(--gold), 0 0 14px rgba(242, 193, 78, 0.25); }
+.seat.left { opacity: 0.7; }
+.seat-head { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.seat-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.seat-name b { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat.me .seat-name b { text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 3px; }
+.seat-meta { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+.seat-cards { display: inline-flex; align-items: center; gap: 3px; }
+.seat-score { color: var(--ink); font-size: 0.95rem; min-width: 2ch; text-align: right; }
+.seat-score.lead { color: var(--gold); }
+.melds { display: flex; flex-wrap: wrap; gap: 10px; min-height: calc(var(--mh) + 12px); }
+.meld-space { flex: 1; display: grid; place-items: center; border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px; margin: 2px 0; color: var(--ink-dim); font-size: 0.75rem; opacity: 0.7; }
 .meld { display: flex; padding: 4px; border-radius: 8px; border: 2px solid transparent; transition: opacity 0.15s; }
 .meld .card + .card { margin-left: calc(var(--mw) * -0.42); }
 .meld.target { border-color: var(--gold); background: rgba(242, 193, 78, 0.14); cursor: pointer; animation: glowBorder 1.4s ease-in-out infinite; }
@@ -394,12 +395,16 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 .toast.error { background: #5a1d17; border-color: var(--danger); }
 .toast.buy { border-color: #3c74d6; }
 .toast.down, .toast.big { border-color: var(--gold); }
-.toast.turn { background: var(--gold); color: var(--gold-ink); border-color: transparent; font-weight: 800; text-align: center; font-size: 1rem; }
 .toast.out { opacity: 0; transform: translateY(-8px); }
 .flash { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; pointer-events: none; background: rgba(120, 10, 20, 0.25); transition: opacity 0.4s; }
 .flash.out { opacity: 0; }
 .flash-inner { text-align: center; animation: slam 0.35s cubic-bezier(0.2, 1.6, 0.4, 1); padding: 0 var(--gutter); }
 .flash-word { font: 900 clamp(2.2rem, 11.5vw, 6rem)/1 Georgia, serif; color: #fff; text-shadow: 0 4px 0 var(--danger), 0 10px 30px rgba(0, 0, 0, 0.6); letter-spacing: 0.02em; }
+.flash.turn { background: rgba(242, 193, 78, 0.16); }
+.flash.turn .flash-word { color: var(--gold); text-shadow: 0 4px 0 #6b4e0c, 0 10px 30px rgba(0, 0, 0, 0.6); }
+/* Your turn, and you haven't touched the screen since: a pulsing gold frame round the page. */
+.nudge body::after { content: ''; position: fixed; inset: 0; z-index: 60; pointer-events: none; border: 4px solid var(--gold); box-shadow: inset 0 0 30px rgba(242, 193, 78, 0.5); animation: nudge 0.9s ease-in-out infinite alternate; }
+.nudge .status.mine { animation: pulse 0.9s ease-in-out infinite; }
 .flash-text { margin-top: 10px; font-weight: 700; font-size: 1.1rem; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -413,9 +418,15 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
 @keyframes fadeOut { from { opacity: 1; } }
 @keyframes winPop { from { transform: scale(1); } 50% { transform: scale(1.2); } }
 @keyframes glowIn { from { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); } }
+@keyframes nudge { from { opacity: 0.25; } }
+@keyframes fadeIn { from { opacity: 0; } }
 @keyframes bob { to { transform: translateY(-6px) rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  /* The dealer draw still reveals in order, with fades instead of flips and pops. */
+  .flip-in > .card:not(.back) { animation: fadeIn 0.3s ease calc(0.5s + var(--i) * 0.45s) backwards !important; }
+  .draw:not(.win) { animation: fadeOut 0.4s ease var(--reveal) backwards !important; }
+  .reveal { animation: fadeIn 0.4s ease var(--reveal) backwards !important; }
 }
 
 /* ---------- phones in portrait: a tighter single column */
@@ -427,13 +438,11 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
   .round-line .muted { grid-area: no; font-size: 0.8rem; white-space: nowrap; }
   .round-line b { grid-area: req; line-height: 1.2; }
   .rule-tags { grid-area: tags; }
-  .strip { gap: 6px; padding: 2px 2px 6px; }
-  .pchip { padding: 4px 8px; min-width: 96px; gap: 0; }
   .status { padding: 7px 10px; min-height: 36px; font-size: 0.92rem; }
   .ticker { min-height: 2.5em; padding: 2px; font-size: 0.82rem; }
-  .table { padding: 8px; gap: 6px; min-height: 70px; }
+  .table { padding: 4px; gap: 4px; }
+  .seat { padding: 3px 5px 1px; }
   .melds { gap: 6px; }
-  .owner-name { margin-bottom: 2px; }
   .piles { padding: 8px 0 2px; gap: 10px; }
   .planner { padding: 6px 8px 8px; }
   .planner-head { margin-bottom: 4px; }
@@ -480,14 +489,13 @@ ol.rounds { margin: 4px 0 12px; padding-left: 1.4em; }
   .hand-head .seg-btn { min-height: 24px; padding: 2px 10px; }
   .hand { gap: 0; padding: 12px 0 2px; min-height: calc(var(--ch) + 14px); }
   .hand .card + .card { margin-left: calc(var(--cw) * -0.2); }
-  .strip { flex-direction: column; overflow: visible; padding: 0; gap: 4px; }
-  .pchip { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 0; padding: 4px 8px; min-width: 0; }
-  /* Keep room for the name; when tags crowd it, the stats wrap onto a second line instead. */
-  .pc-top { flex: 1 1 8em; min-width: 0; }
-  .pc-meta { margin-left: auto; }
-  .owner { display: flex; align-items: center; gap: 8px; }
-  .owner-name { margin: 0; flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pc-name { max-width: none; }
+  /* Seats go side-on: who they are on the left, their melds to the right. */
+  .seat { display: flex; align-items: center; gap: 8px; }
+  .seat-head { flex: none; width: clamp(96px, 24%, 150px); flex-direction: column; align-items: stretch; gap: 0; }
+  .seat-name { width: 100%; }
+  .seat-meta { margin-left: 0; }
+  .seat-score { margin-left: auto; }
+  .melds { flex: 1; min-width: 0; }
   .status { margin: 0; min-height: 0; padding: 6px 10px; font-size: 0.88rem; }
   .ticker { display: none; }
   .offline { margin-top: 4px; }
