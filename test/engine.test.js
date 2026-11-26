@@ -533,3 +533,16 @@ test('stalemate with Seeing Double: only when no new meld can be built either', 
   s = apply(s, a, { type: 'discard', cardId: 'H7.0' }, { rng });
   assert.equal(s.phase, 'turn');
 });
+
+test('a Joker swapped out of a run can go back on an end of the same run', () => {
+  let { s, rng } = setup(3);
+  const a = s.players[s.current].id;
+  s.melds.push({ id: 'mr', owner: a, type: 'run', suit: 'C', start: 5, cards: ['C5.0', 'X1.0', 'C7.0'] });
+  s.down[a] = { groups: 2, runs: 0 };
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  s.hands[a].push('C6.1');
+  s = apply(s, a, { type: 'swapJoker', meldId: 'mr', cardId: 'C6.1', target: { meldId: 'mr', end: 'low' } }, { rng });
+  const m = s.melds.find((x) => x.id === 'mr');
+  assert.deepEqual(m.cards, ['X1.0', 'C5.0', 'C6.1', 'C7.0']);
+  assert.equal(m.start, 4);
+});
