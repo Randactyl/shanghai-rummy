@@ -79,8 +79,9 @@ browser talk to each other directly, with no network at all.
    summary of this game's rules. The host taps *Deal round 1*.
 4. While hands are dealt, everyone has a few seconds to arrange. Tap *I'm ready*; the first card flips as soon
    as everyone is ready, or the host can tap *Flip now*.
-5. On your turn, tap the deck or the discard pile to draw. You get a buzz (on phones that support it) and a
-   toast when your turn starts.
+5. On your turn, tap the deck or the discard pile to draw. When your turn starts you get a "Your turn!" flash, a chime
+   and a buzz (on phones that support it); until you touch the screen the page glows gold, the tab title blinks,
+   and the chime repeats every 12 seconds a few times. Turn the chime off from the menu.
    - **Lay down:** the *Going down* tray shows a slot for each Group/Run the round needs. Select cards; when
      they make a valid set, tap *Make Group* / *Make Run* (or the glowing slot). Once every slot is filled,
      tap *Lay down*. You can fill the tray while waiting for your turn.

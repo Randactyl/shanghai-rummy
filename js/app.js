@@ -1,5 +1,5 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
-import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
+import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, addOptions, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
 import { HostSession } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
@@ -37,13 +37,15 @@ const ui = {
   renderQueued: false,
   roundKey: null,
   turnKey: null,
+  seatKey: null,
+  nudge: null, // repeating "your turn" reminder until the player touches the screen
   sortBy: sget('shrum.sort', null), // 'rank' | 'suit' | null (manual order)
 };
 
 // ------------------------------------------------------------------ card style (per device)
 
 const BACKS = [['blue', 'Classic'], ['red', 'Ruby'], ['green', 'Forest'], ['purple', 'Royal'], ['black', 'Midnight'], ['sunset', 'Sunset']];
-const prefs = { back: 'blue', four: false, ...sget('shrum.cards', {}) };
+const prefs = { back: 'blue', four: false, sound: true, ...sget('shrum.cards', {}) };
 function applyPrefs() {
   document.documentElement.dataset.back = prefs.back;
   document.documentElement.classList.toggle('four-color', !!prefs.four);
@@ -221,7 +223,8 @@ function leave() {
   Object.assign(ui, { selected: new Set(), order: [], staged: [], mode: null, modal: null, lastLog: null });
   history.replaceState(null, '', location.pathname + location.search);
   ui.turnKey = null;
-  document.title = 'Shanghai Rummy';
+  stopNudge();
+  document.title = TITLE;
   releaseWakeLock();
   render();
 }
@@ -291,17 +294,78 @@ function syncHand(g) {
 const stagedIds = () => new Set(ui.staged.flatMap((s) => s.cards));
 const sortHand = (ids, by) => (by === 'suit' ? sortBySuit(ids) : sortByRank(ids));
 
-/** Buzz + toast when it becomes your turn, and flag it in the tab title. */
+const TITLE = 'Shanghai Rummy';
+const TURN_TITLE = '● Your turn · Shanghai Rummy';
+
+/** Fanfare when it becomes your turn, then keep nudging until the player touches the screen. */
 function notifyTurn(v) {
   const g = v.game;
   const myTurn = !!g && g.phase === 'turn' && g.players[g.current]?.id === v.me;
   const key = myTurn ? `${app.code}:${g.round}:${g.turnNo}` : null;
-  if (key && key !== ui.turnKey) {
-    toast("It's your turn!", 'turn');
-    buzz([90, 60, 90]);
-  }
+  if (key && key !== ui.turnKey) startNudge();
+  if (!key) stopNudge();
   ui.turnKey = key;
-  document.title = myTurn ? '● Your turn · Shanghai Rummy' : 'Shanghai Rummy';
+  if (!ui.nudge) document.title = myTurn ? TURN_TITLE : TITLE;
+}
+
+const NUDGE_EVERY_MS = 12000;
+const NUDGE_REPEATS = 4;
+/** Flash + buzz + chime now; then a pulsing frame and blinking tab title, with a buzz + chime every so often. */
+function startNudge() {
+  stopNudge();
+  flash('Your turn!', '', 'turn');
+  buzz([90, 60, 90]);
+  chime();
+  document.documentElement.classList.add('nudge');
+  let blinks = 0;
+  let repeats = 0;
+  const nudge = {
+    blink: setInterval(() => { document.title = blinks++ % 2 ? TURN_TITLE : '🔔 YOUR TURN!'; }, 1000),
+    repeat: setInterval(() => {
+      buzz([90, 60, 90]);
+      chime();
+      if (++repeats >= NUDGE_REPEATS) clearInterval(nudge.repeat);
+    }, NUDGE_EVERY_MS),
+  };
+  ui.nudge = nudge;
+}
+function stopNudge() {
+  if (!ui.nudge) return;
+  clearInterval(ui.nudge.blink);
+  clearInterval(ui.nudge.repeat);
+  ui.nudge = null;
+  document.documentElement.classList.remove('nudge');
+  document.title = ui.turnKey ? TURN_TITLE : TITLE;
+}
+// Any touch or key press means they've noticed.
+addEventListener('pointerdown', () => { unlockAudio(); stopNudge(); }, true);
+addEventListener('keydown', () => { unlockAudio(); stopNudge(); }, true);
+
+// Browsers only allow sound once the page has been tapped, so the audio context is created on the first tap.
+let audio = null;
+function unlockAudio() {
+  if (!prefs.sound) return;
+  try {
+    audio ||= new AudioContext();
+    if (audio.state === 'suspended') audio.resume();
+  } catch {}
+}
+/** A soft two-note chime. */
+function chime() {
+  if (!prefs.sound || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime;
+  for (const [freq, at] of [[784, 0], [1175, 0.13]]) {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t + at);
+    gain.gain.exponentialRampToValueAtTime(0.2, t + at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.6);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(t + at);
+    osc.stop(t + at + 0.65);
+  }
 }
 function buzz(pattern) {
   // Browsers ignore vibrate() until the page has been tapped; iPhones don't support it at all.
@@ -313,7 +377,7 @@ function announce(g) {
   if (ui.lastLog == null) { ui.lastLog = maxN; return; }
   for (const e of g.log) {
     if (e.n <= ui.lastLog) continue;
-    if (e.kind === 'shanghai') { shanghaiFlash(e.text); buzz(200); }
+    if (e.kind === 'shanghai') { flash('SHANGHAI!', e.text.replace(/^SHANGHAI!\s*/, '')); buzz(200); }
     else if (['buy', 'down', 'big'].includes(e.kind)) toast(e.text, e.kind);
   }
   ui.lastLog = maxN;
@@ -361,15 +425,32 @@ function render() {
   if (html !== lastHTML.root) {
     const name = $('#name')?.value;
     const jc = $('#joincode')?.value;
+    const tableScroll = $('.table')?.scrollTop || 0;
     root.innerHTML = html;
     lastHTML.root = html;
     if (name != null && $('#name')) $('#name').value = name;
     if (jc && $('#joincode')) $('#joincode').value = jc;
+    if ($('.table')) $('.table').scrollTop = tableScroll;
   }
+  showActiveSeat(v?.game);
   renderModal();
   tick();
 }
 const lastHTML = { root: null, modal: null };
+
+/** When the table scrolls on its own (phones in landscape), bring the seat whose turn it is into view as turns change. */
+function showActiveSeat(g) {
+  const key = g?.phase === 'turn' ? `${g.round}:${g.current}` : null;
+  if (key === ui.seatKey) return;
+  ui.seatKey = key;
+  const t = $('.table');
+  const s = $('.seat.turn');
+  if (!t || !s || t.scrollHeight <= t.clientHeight) return;
+  const tr = t.getBoundingClientRect();
+  const sr = s.getBoundingClientRect();
+  if (sr.top < tr.top) t.scrollTop -= tr.top - sr.top + 4;
+  else if (sr.bottom > tr.bottom) t.scrollTop += sr.bottom - tr.bottom + 4;
+}
 // setTimeout rather than requestAnimationFrame: rAF stalls in background tabs.
 let renderTimer = 0;
 function queueRender() {
@@ -704,15 +785,6 @@ function gameHTML(v) {
   const ready = new Set(g.ready || []);
   const low = g.scores.length ? Math.min(...g.players.map((p) => p.total)) : null;
 
-  // ---- players
-  const strip = g.players.map((p, i) => {
-    const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Part down') : '';
-    return `<div class="pchip ${i === g.current && g.phase === 'turn' ? 'turn' : ''} ${p.id === me ? 'me' : ''}">
-      <div class="pc-top"><span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span><span class="pc-name">${esc(p.name)}</span>${i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}${compose && ready.has(p.id) ? '<span class="tag ok" title="Ready">✓</span>' : ''}</div>
-      <div class="pc-meta"><span class="pc-cards" title="Cards in hand">${icon.hand}${p.handCount}</span>${down ? `<span class="tag down">${down}</span>` : ''}<b class="pc-score ${p.total === low ? 'lead' : ''}" title="Total score${p.total === low ? ' — lowest so far' : ''}">${p.total}</b></div>
-    </div>`;
-  }).join('');
-
   // ---- status
   let status = '';
   let statusCls = '';
@@ -746,34 +818,45 @@ function gameHTML(v) {
     }
   }
 
-  // ---- table
+  // ---- table: every player has a seat with room for their melds, so nothing shifts when someone goes down.
   // Players who were removed keep their cards on the table (others can still play on them).
-  const owners = [...g.players, ...g.departed.map((p) => ({ ...p, left: true }))].filter((p) => g.melds.some((m) => m.owner === p.id));
+  const seats = [
+    ...g.players.map((p, i) => ({ ...p, i })),
+    ...g.departed.filter((p) => g.melds.some((m) => m.owner === p.id)).map((p) => ({ ...p, left: true })),
+  ];
   const modeActive = targets.size > 0 || !!ui.mode;
   // "Recent" = played during the last lap of turns, i.e. everything since your own previous turn.
   const recentAfter = g.turnNo - g.players.length;
   const isRecent = (c) => (g.played?.[c] ?? -Infinity) > recentAfter;
-  const table = owners.length
-    ? owners.map((p) => `
-      <div class="owner">
-        <div class="owner-name">${esc(p.name)}${p.id === me ? ' (you)' : ''}${p.left ? ' (left the game)' : ''}</div>
+  const table = seats.map((p) => {
+    const melds = g.melds.filter((m) => m.owner === p.id);
+    const down = p.down ? (isFullyDown(p.down, g.req) ? 'Down' : 'Part down') : '';
+    const turn = !p.left && p.i === g.current && g.phase === 'turn';
+    return `
+      <div class="seat ${turn ? 'turn' : ''} ${p.id === me ? 'me' : ''} ${p.left ? 'left' : ''}" data-seat="${p.id}">
+        <div class="seat-head">
+          <span class="seat-name">${p.left ? '' : `<span class="dot ${v.online[p.id] ? 'on' : 'off'}"></span>`}<b>${esc(p.name)}</b>${p.id === me ? '<span class="muted">(you)</span>' : ''}${p.i === g.dealer ? '<span class="tag" title="Dealer">D</span>' : ''}${compose && ready.has(p.id) ? '<span class="tag ok" title="Ready">✓</span>' : ''}</span>
+          ${p.left ? '<span class="muted">left the game</span>' : `<span class="seat-meta">${down ? `<span class="tag down">${down}</span>` : ''}<span class="seat-cards" title="Cards in hand">${icon.hand}${p.handCount}</span><b class="seat-score ${p.total === low ? 'lead' : ''}" title="Total score${p.total === low ? ' — lowest so far' : ''}">${p.total}</b></span>`}
+        </div>
         <div class="melds">
-          ${g.melds.filter((m) => m.owner === p.id).map((m) => {
+          ${melds.length ? melds.map((m) => {
             const t = targets.get(m.id);
             const isSrc = ui.mode?.kind === 'jokerTarget' && ui.mode.meldId === m.id;
             return `<div class="meld ${t ? 'target' : modeActive ? 'dim' : ''} ${isSrc ? 'source' : ''}" ${t ? `data-act="meld" data-meld="${m.id}" role="button" tabindex="0"` : ''} title="${esc(describeMeld(m, mods))}">
               ${m.cards.map((c) => cardHTML(c, { cls: `mini ${isRecent(c) ? 'recent' : ''}` })).join('')}
             </div>`;
-          }).join('')}
+          }).join('') : '<div class="meld-space">Not down yet</div>'}
         </div>
-      </div>`).join('')
-    : `<div class="empty-table muted">No cards on the table yet.</div>`;
+      </div>`;
+  }).join('');
 
   // ---- piles
   const canDraw = myTurn && g.turnStep === 'draw' && !g.shanghaiPick;
   const dt = g.discardTop;
   const showBuy = g.buyOpen && !myTurn && !(g.pendingBuy?.requesters || []).includes(me) && dt;
-  const showShanghai = mods.shanghai && g.shanghaiWindow && g.shanghaiWindow.by !== me && dt && ui.mode?.kind !== 'shanghai';
+  // Only offer Shanghai when the card has somewhere to go, so tapping it never leads to a dead end.
+  const showShanghai = mods.shanghai && g.shanghaiWindow && g.shanghaiWindow.by !== me && dt && ui.mode?.kind !== 'shanghai'
+    && g.melds.some((m) => addOptions(m, dt.id, mods).length);
   const discardLabel = dt?.locked ? '🔒 Shanghaied' : dt?.by ? `From ${esc(dt.by === me ? 'you' : playerName(v, dt.by))}` : `Discard · ${g.discardCount}`;
   const piles = `
     <div class="piles">
@@ -830,7 +913,6 @@ function gameHTML(v) {
       </div>
     </header>
     <div class="g-side">
-      <div class="strip">${strip}</div>
       <div class="info">
         <div class="status ${statusCls}">${status}</div>
         ${offlineNotice(v)}
@@ -934,6 +1016,8 @@ function renderModal() {
     const same = mr.querySelector('.modal')?.getAttribute('aria-label') === (m && esc(m.label || (m.title || '').replace(/<[^>]+>/g, '')));
     mr.innerHTML = html;
     lastHTML.modal = html;
+    // Animations run on while the page is in the background, so a reveal that arrived there is replayed on return.
+    ui.replayModal = document.hidden && !!m?.confetti;
     // Keep the scroll position when the same dialog re-renders with fresh data.
     if (same && mr.querySelector('.modal-body')) mr.querySelector('.modal-body').scrollTop = prevScroll;
   }
@@ -1229,10 +1313,10 @@ function toast(text, kind = 'info') {
   setTimeout(() => el.remove(), kind === 'error' ? 3700 : 3100);
 }
 
-function shanghaiFlash(text) {
+function flash(word, text, cls = '') {
   const el = document.createElement('div');
-  el.className = 'flash';
-  el.innerHTML = `<div class="flash-inner"><div class="flash-word">SHANGHAI!</div><div class="flash-text">${esc(text.replace(/^SHANGHAI!\s*/, ''))}</div></div>`;
+  el.className = `flash ${cls}`;
+  el.innerHTML = `<div class="flash-inner"><div class="flash-word">${esc(word)}</div>${text ? `<div class="flash-text">${esc(text)}</div>` : ''}</div>`;
   document.body.appendChild(el);
   setTimeout(() => el.classList.add('out'), 1900);
   setTimeout(() => el.remove(), 2400);
@@ -1322,6 +1406,8 @@ const handlers = {
       body: `<div class="menu">
         <button class="btn wide" data-act="game-rules">${icon.rules} Rules for this game</button>
         <button class="btn wide" data-act="card-style">${icon.palette} Card style</button>
+        <label class="mod ${prefs.sound ? 'on' : ''}"><input type="checkbox" id="turn-sound" ${prefs.sound ? 'checked' : ''}>
+          <span><b>Chime on your turn</b><span class="muted small">On this device. Your phone also buzzes if it can.</span></span></label>
         <div class="row">
           <button class="btn wide" data-act="copy" data-text="${esc(shareLink(app.code))}">${icon.copy} Copy invite link (${esc(app.code)})</button>
           ${navigator.share ? `<button class="btn square" data-act="share" data-text="${esc(shareLink(app.code))}" aria-label="Share invite link" title="Share">${icon.share}</button>` : ''}
@@ -1510,6 +1596,7 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.id === 'turn-sound') { prefs.sound = t.checked; applyPrefs(); unlockAudio(); handlers.menu(); return; }
   if (t.id === 'four-color') { prefs.four = t.checked; applyPrefs(); ui.modal = cardStyleModal(); renderModal(); return; }
   if (!app.session) return;
   if (t.dataset.mod) app.session.updateSettings({ mods: { [t.dataset.mod]: t.checked } });
@@ -1587,7 +1674,11 @@ async function requestWakeLock() {
   } catch {}
 }
 function releaseWakeLock() { wakeLock?.release().catch(() => {}); wakeLock = null; }
-document.addEventListener('visibilitychange', () => { if (app.view?.game) requestWakeLock(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (app.view?.game) requestWakeLock();
+  if (ui.replayModal) { lastHTML.modal = null; $('#modal-root').innerHTML = ''; renderModal(); }
+});
 addEventListener('beforeunload', (e) => {
   if (app.role === 'host' && app.view?.game && app.view.game.phase !== 'gameEnd') { e.preventDefault(); e.returnValue = ''; }
 });
