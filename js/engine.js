@@ -446,7 +446,7 @@ export function apply(prev, pid, action, ctx = {}) {
       if (!swap) fail(`The ${label(card)} can't replace that Joker`);
       const jokerId = src.cards[swap.index];
       const tgtId = action.target?.meldId;
-      if (!tgtId || tgtId === src.id) fail('Choose another place on the table for the Joker');
+      if (!tgtId || (tgtId === src.id && src.type === 'group')) fail('Choose another place on the table for the Joker');
       const updatedSrc = { ...src, cards: src.cards.slice() };
       updatedSrc.cards[swap.index] = card;
       state.melds[state.melds.indexOf(src)] = updatedSrc;

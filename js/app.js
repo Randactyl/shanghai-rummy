@@ -995,8 +995,10 @@ function computeTargets(v) {
     const jokerId = src?.cards.find(isJoker);
     if (!jokerId) return out;
     for (const m of g.melds) {
-      if (m.id === src.id) continue;
-      for (const o of layOffOptions(m, jokerId, mods)) {
+      if (m.id === src.id && m.type === 'group') continue;
+      // On its own run, the Joker goes to an end of the run as it will be once the natural card replaces it.
+      const target = m.id === src.id ? { ...m, cards: m.cards.map((c) => (c === jokerId ? ui.mode.cardId : c)) } : m;
+      for (const o of layOffOptions(target, jokerId, mods)) {
         if (o.kind === 'add') add(m, { label: m.type === 'group' ? 'Put the Joker here' : `Put the Joker on the ${o.end} end`, action: { type: 'swapJoker', meldId: src.id, cardId: ui.mode.cardId, target: { meldId: m.id, end: o.end } } });
       }
     }
