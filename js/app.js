@@ -40,7 +40,12 @@ const ui = {
   seatKey: null,
   nudge: null, // repeating "your turn" reminder until the player touches the screen
   sortBy: sget('shrum.sort', null), // 'rank' | 'suit' | null (manual order)
+  buyArm: null, // {card, at}: when the Buy button started offering this card
 };
+
+// A Buy button that just appeared, or just switched cards, ignores taps for a moment, so a tap
+// meant for the button that was there before can't buy a card the player never saw.
+const BUY_ARM_MS = 500;
 
 // ------------------------------------------------------------------ card style (per device)
 
@@ -876,6 +881,12 @@ function gameHTML(v) {
   const canDraw = myTurn && g.turnStep === 'draw' && !g.shanghaiPick;
   const dt = g.discardTop;
   const showBuy = g.buyOpen && !myTurn && !(g.pendingBuy?.requesters || []).includes(me) && dt;
+  if (!showBuy) ui.buyArm = null;
+  else if (ui.buyArm?.card !== dt.id) {
+    ui.buyArm = { card: dt.id, at: Date.now() };
+    setTimeout(queueRender, BUY_ARM_MS);
+  }
+  const buyArmed = showBuy && Date.now() - ui.buyArm.at >= BUY_ARM_MS;
   // Only offer Shanghai when the card has somewhere to go, so tapping it never leads to a dead end.
   const showShanghai = mods.shanghai && g.shanghaiWindow && g.shanghaiWindow.by !== me && dt && ui.mode?.kind !== 'shanghai'
     && g.melds.some((m) => addOptions(m, dt.id, mods).length);
@@ -891,7 +902,7 @@ function gameHTML(v) {
         <div class="pile-label">${discardLabel}</div>
       </div>
       <div class="pile-actions">
-        ${showBuy ? `<button class="btn buy" data-act="buy">Buy ${label(dt.id)}<small>+2 penalty cards</small></button>` : ''}
+        ${showBuy ? `<button class="btn buy" data-act="buy" data-card="${dt.id}" ${buyArmed ? '' : 'disabled'}>Buy ${label(dt.id)}<small>+2 penalty cards</small></button>` : ''}
         ${showShanghai ? `<button class="btn shanghai" data-act="shanghai">Shanghai!</button>` : ''}
         ${ui.mode ? `<button class="btn ghost" data-act="cancel-mode">Cancel</button>` : ''}
       </div>
@@ -1545,7 +1556,10 @@ const handlers = {
   scores() { ui.modal = scoresModal(app.view.game); renderModal(); },
   log() { ui.modal = logModal(app.view.game); renderModal(); },
   draw(el) { ui.fresh = new Set(); act({ type: 'draw', from: el.dataset.from }); },
-  buy() { act({ type: 'buy' }); },
+  buy(el) {
+    if (!ui.buyArm || ui.buyArm.card !== el.dataset.card || Date.now() - ui.buyArm.at < BUY_ARM_MS) return;
+    act({ type: 'buy', cardId: el.dataset.card });
+  },
   shanghai() {
     const g = app.view.game;
     const card = g.discardTop?.id;
