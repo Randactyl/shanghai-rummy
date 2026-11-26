@@ -1,5 +1,5 @@
 import { label, isJoker, isRed, rankOf, suitOf, SUIT_SYMBOL, rankLabel, sortByRank, sortBySuit } from './cards.js';
-import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, addOptions, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
+import { ROUNDS, arrangeRun, analyzeGroup, layOffOptions, addOptions, layOffPlans, isFullyDown, describeMeld, checkLayDownCounts, MIN_GROUP, MIN_RUN } from './rules.js';
 import { suggestedDecks, settingsProblem } from './engine.js';
 import { HostSession } from './host.js';
 import { peerHost, peerClient, localHost, localClient } from './net.js';
@@ -716,6 +716,19 @@ function selectionCheck(g, ids) {
   return out;
 }
 
+/** The planned meld with `ids` added to it, or null if they don't fit. */
+function grownStage(g, s, ids) {
+  const mods = g.settings.mods;
+  if (!ids.length) return null;
+  const cards = [...(s.type === 'run' ? s.options[s.opt].cards : s.cards), ...ids];
+  if (s.type === 'group') {
+    if (mods.restrictive || !analyzeGroup(cards, mods).ok) return null;
+    return { type: 'group', cards };
+  }
+  const r = mods.restrictive ? null : arrangeRun(cards, mods);
+  return r?.ok ? { type: 'run', cards, options: r.options, opt: 0 } : null;
+}
+
 const SLOT_HINT = (type, mods) => type === 'group'
   ? (mods.crazy ? '3+ of one suit' : '3+ of the same rank')
   : (mods.crazy ? '4+ in a row, any suits' : '4+ in a row, same suit');
@@ -723,10 +736,13 @@ const SLOT_HINT = (type, mods) => type === 'group'
 function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
   const mods = g.settings.mods;
   const slots = [];
+  const ids = ui.order.filter((id) => ui.selected.has(id));
+  const growable = ui.staged.map((s) => !!grownStage(g, s, ids));
   // Staged melds first (in the order they were made), then empty slots for what's still needed.
   ui.staged.forEach((s, i) => {
     const cards = s.type === 'run' ? s.options[s.opt].cards : s.cards;
-    slots.push(`<div class="slot filled">
+    const grow = growable[i];
+    slots.push(`<div class="slot filled ${grow ? 'can' : ''}" ${grow ? `data-act="grow" data-i="${i}" role="button" tabindex="0" title="Add the selected cards"` : ''}>
       <div class="staged-head"><span>${s.type === 'run' ? 'Run' : 'Group'} ✓</span>
         ${s.type === 'run' && s.options.length > 1 ? `<button class="icon-btn" data-act="flip-run" data-i="${i}" title="Move the Joker to the other end" aria-label="Move the Joker">⇄</button>` : ''}
         <button class="icon-btn" data-act="unstage" data-i="${i}" aria-label="Put back in hand" title="Put back">✕</button></div>
@@ -748,7 +764,10 @@ function plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) {
   let hint;
   const fit = selCheck.group && plan.wants('group') ? 'Group' : selCheck.run && plan.wants('run') ? 'Run' : null;
   if (sel && fit) hint = `That's a ${fit}! Tap <b>Make ${fit}</b> to set it aside here.`;
-  else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
+  else if (sel && growable.some(Boolean)) {
+    const kinds = new Set(ui.staged.filter((_, i) => growable[i]).map((s) => (s.type === 'group' ? 'Group' : 'Run')));
+    hint = `Tap the glowing ${[...kinds].join(' or ')} to add ${sel === 1 ? 'it' : 'them'}.`;
+  } else if (sel && (selCheck.group || selCheck.run)) hint = `That's a ${selCheck.group ? 'Group' : 'Run'}, but you already have enough of those for this round.`;
   else if (sel) hint = esc(selCheck.why);
   else if (plan.ready && !plan.fully && !completes) hint = canPlayStep ? 'The Gambit: lay these down now, or keep going.' : 'The Gambit: lay these down on your turn, or keep going.';
   else if (plan.ready) hint = canPlayStep ? 'All set — tap <b>Lay down</b>.' : myTurn ? 'All set — draw a card, then lay down.' : 'All set — lay down when your turn comes.';
@@ -810,6 +829,7 @@ function gameHTML(v) {
     } else if (myTurn) {
       statusCls = 'mine';
       if (one && targets.size) status = 'Tap a glowing meld on the table to play it — or discard it';
+      else if (sel.length > 1 && targets.size) status = `Tap a glowing meld on the table to play all ${sel.length}`;
       else if (!myDown) status = 'Go down, or discard to end your turn';
       else if (plan.active && !plan.fully) status = 'Keep laying down, or discard to end your turn';
       else status = 'Select a card to play it on the table, or discard to end your turn';
@@ -919,10 +939,10 @@ function gameHTML(v) {
         <div class="ticker muted small">${g.log.slice(-2).map((e) => esc(e.text)).join('<br>')}</div>
       </div>
       ${piles}
+      ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
     </div>
     <div class="g-main">
       <section class="table">${table}</section>
-      ${plan.active ? plannerHTML(g, plan, selCheck, { myTurn, canPlayStep }) : ''}
       <section class="hand-wrap">
         <div class="hand-head">
           <span>Your hand <span class="muted">(${handIds.length}${staged.size ? ` + ${staged.size} set aside` : ''})</span></span>
@@ -982,9 +1002,23 @@ function computeTargets(v) {
     }
     return out;
   }
-  if (ui.selected.size !== 1) return out;
+  if (!ui.selected.size || !isFullyDown(g.down[me], g.req)) return out;
+  if (ui.selected.size > 1) {
+    // Several cards at once: a meld glows only if every selected card fits on it.
+    const ids = ui.order.filter((id) => ui.selected.has(id));
+    if (ids.length > 13) return out;
+    const where = (s) => (s.end ? ` on the ${s.end} end` : '');
+    for (const m of g.melds) {
+      for (const p of layOffPlans(m, ids, mods)) {
+        add(m, {
+          label: m.type === 'group' ? `Add all ${ids.length}` : p.steps.map((s) => `${label(s.cardId)}${where(s)}`).join(', '),
+          action: { type: 'layOff', meldId: m.id, cards: p.steps },
+        });
+      }
+    }
+    return out;
+  }
   const card = [...ui.selected][0];
-  if (!isFullyDown(g.down[me], g.req)) return out;
   for (const m of g.melds) {
     for (const o of layOffOptions(m, card, mods)) {
       if (o.kind === 'add') add(m, { label: endLabel(m, o, card), action: { type: 'layOff', meldId: m.id, cardId: card, end: o.end } });
@@ -1537,6 +1571,14 @@ const handlers = {
     ui.selected.clear();
     render();
   },
+  grow(el) {
+    const i = +el.dataset.i;
+    const next = ui.staged[i] && grownStage(app.view.game, ui.staged[i], ui.order.filter((id) => ui.selected.has(id)));
+    if (!next) return;
+    ui.staged[i] = next;
+    ui.selected.clear();
+    render();
+  },
   unstage(el) { ui.staged.splice(+el.dataset.i, 1); render(); },
   'flip-run'(el) { const s = ui.staged[+el.dataset.i]; s.opt = (s.opt + 1) % s.options.length; render(); },
   laydown() {
@@ -1557,7 +1599,7 @@ const handlers = {
     if (!opts?.length) return;
     if (opts.length === 1) return chooseTarget(opts[0]);
     ui.modal = {
-      title: 'Play it where?',
+      title: ui.selected.size > 1 ? 'Play them where?' : 'Play it where?',
       body: `<div class="menu">${opts.map((o, i) => `<button class="btn wide" data-act="choose" data-i="${i}" data-meld="${el.dataset.meld}">${esc(o.label)}</button>`).join('')}</div>`,
       buttons: '<button class="btn ghost" data-act="close-modal">Cancel</button>',
     };

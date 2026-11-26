@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { arrangeRun, analyzeGroup, layOffOptions, validateRunOrder, checkLayDownCounts, ROUNDS } from '../js/rules.js';
 import { newGame, apply, viewFor, SYSTEM, DEFAULT_SETTINGS, RuleError } from '../js/engine.js';
 import { points, dealDrawValue, buildDeck } from '../js/cards.js';
-import { couldStartMeld } from '../js/rules.js';
+import { couldStartMeld, layOffPlans } from '../js/rules.js';
 
 const M = (over = {}) => ({ ...DEFAULT_SETTINGS.mods, ...over });
 
@@ -197,6 +197,34 @@ test('defensive shanghai locks the card for one turn', () => {
   s = apply(s, a, { type: 'buy' }, { rng, now: 0 });
   s = apply(s, SYSTEM, { type: 'resolveBuy' }, { rng });
   assert.ok(s.hands[a].includes('D5.1'));
+});
+
+test('lay off several cards at once', () => {
+  const run = { type: 'run', suit: 'H', start: 4, cards: ['H4.0', 'H5.0', 'H6.0', 'H7.0'] };
+  // The 2 only fits once the 3 is on, whichever order they were selected in.
+  const [p] = layOffPlans(run, ['H2.0', 'H3.0'], M());
+  assert.deepEqual(p.steps, [{ cardId: 'H3.0', end: 'low' }, { cardId: 'H2.0', end: 'low' }]);
+  assert.deepEqual(p.meld.cards, ['H2.0', 'H3.0', 'H4.0', 'H5.0', 'H6.0', 'H7.0']);
+  assert.equal(layOffPlans(run, ['H3.0', 'H8.0'], M()).length, 1, 'both ends');
+  assert.deepEqual(layOffPlans(run, ['H2.0', 'H8.0'], M()), [], 'the 2 has a gap');
+  assert.equal(layOffPlans(run, ['H3.0', 'X1.0'], M()).length, 2, 'Joker below the 3 or on top');
+  const grp = { type: 'group', rank: 9, cards: ['H9.0', 'S9.0', 'D9.0'] };
+  assert.equal(layOffPlans(grp, ['C9.0', 'H9.1', 'X1.0'], M()).length, 1);
+  assert.deepEqual(layOffPlans(grp, ['C9.0', 'H8.0'], M()), []);
+
+  let { s, rng } = setup(2);
+  const a = s.players[s.current].id;
+  const b = s.players[(s.current + 1) % 2].id;
+  s.down[a] = { groups: 2, runs: 0 };
+  s.melds.push({ id: 'mb', owner: b, ...run });
+  s.hands[a].push('H2.1', 'H3.1');
+  s = apply(s, a, { type: 'draw', from: 'deck' }, { rng });
+  assert.throws(() => apply(s, a, { type: 'layOff', meldId: 'mb', cards: [{ cardId: 'H2.1', end: 'low' }, { cardId: 'H3.1', end: 'low' }] }), /doesn't fit/);
+  const before = s.hands[a].length;
+  s = apply(s, a, { type: 'layOff', meldId: 'mb', cards: [{ cardId: 'H3.1', end: 'low' }, { cardId: 'H2.1', end: 'low' }] }, { rng });
+  assert.deepEqual(s.melds.at(-1).cards, ['H2.1', 'H3.1', 'H4.0', 'H5.0', 'H6.0', 'H7.0']);
+  assert.equal(s.hands[a].length, before - 2);
+  assert.match(s.log.at(-1).text, /played the 3♥ and 2♥ on/);
 });
 
 test('round 7: going out by laying everything down without a discard', () => {
